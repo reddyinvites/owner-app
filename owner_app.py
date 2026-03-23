@@ -25,21 +25,25 @@ sheet = client.open_by_key(
 ).worksheet("Sheet1")
 
 
-# -------- ENSURE HEADERS --------
+# -------- SAFE HEADER SETUP --------
 headers = [
     "pg_name", "room_no", "floor",
     "sharing", "available_beds", "last_updated"
 ]
 
-existing = sheet.row_values(1)
+try:
+    existing = sheet.row_values(1)
+except:
+    existing = []
 
-if existing != headers:
-    sheet.clear()
+if not existing:
     sheet.append_row(headers)
+
 
 # -------- LOAD DATA --------
 data = sheet.get_all_records()
 df = pd.DataFrame(data)
+
 
 # -------- FORM --------
 st.subheader("➕ Add / Update Room")
@@ -47,7 +51,7 @@ st.subheader("➕ Add / Update Room")
 pg_name = st.text_input("PG Name")
 room_no = st.text_input("Room Number (e.g. 101)")
 floor = st.number_input("Floor", min_value=1, max_value=20, step=1)
-sharing = st.selectbox("Sharing Type", [1,2,3,4,5,6])
+sharing = st.selectbox("Sharing Type", [1, 2, 3, 4, 5, 6])
 available = st.number_input("Available Beds", min_value=0, max_value=sharing)
 
 # -------- VALIDATION --------
