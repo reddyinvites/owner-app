@@ -8,7 +8,7 @@ st.set_page_config(page_title="Owner Availability", layout="centered")
 
 st.title("🏠 Owner - Update PG Availability")
 
-# -------- CONNECT GOOGLE SHEETS --------
+# -------- GOOGLE SHEETS CONNECT --------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -20,8 +20,10 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
 
 client = gspread.authorize(creds)
 
-# 👉 YOUR SHEET ID (change if needed)
-sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
+# ✅ NEW SHEET CONNECT
+sheet = client.open_by_key(
+    "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
+).worksheet("Sheet1")
 
 
 # -------- LOAD DATA --------
@@ -36,17 +38,18 @@ available = st.number_input("Available Beds", min_value=0, step=1)
 if st.button("Update Availability"):
 
     if pg_name.strip() == "":
-        st.error("Enter PG name")
+        st.error("⚠️ Enter PG name")
     else:
 
         found = False
 
         for i, row in enumerate(data):
 
-            if row["pg_name"].lower() == pg_name.lower():
+            # column safe check
+            if "pg_name" in row and row["pg_name"].lower() == pg_name.lower():
 
-                # update existing
-                sheet.update_cell(i+2, 2, int(available))
+                # update existing row
+                sheet.update_cell(i+2, 2, int(available))  # available_beds
                 sheet.update_cell(i+2, 3, datetime.now().strftime("%Y-%m-%d %H:%M"))
 
                 st.success("✅ Availability Updated")
@@ -54,21 +57,22 @@ if st.button("Update Availability"):
                 break
 
         if not found:
-            # add new PG
+            # add new row
             sheet.append_row([
                 pg_name,
                 int(available),
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             ])
+
             st.success("✅ New PG Added")
 
         st.rerun()
 
 
-# -------- SHOW DATA --------
+# -------- DISPLAY --------
 st.subheader("📊 Current Availability")
 
 if not df.empty:
-    st.dataframe(df)
+    st.dataframe(df, use_container_width=True)
 else:
     st.info("No data yet")
