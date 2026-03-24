@@ -9,6 +9,13 @@ st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
 
+# -------- SESSION (FOR CLEAR FORM) --------
+if "name" not in st.session_state:
+    st.session_state.name = ""
+
+if "phone" not in st.session_state:
+    st.session_state.phone = ""
+
 # -------- GOOGLE SHEETS --------
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -36,8 +43,9 @@ owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
-user_name = st.text_input("Your Name")
-phone = st.text_input("Phone Number")
+
+user_name = st.text_input("Your Name", key="name")
+phone = st.text_input("Phone Number", key="phone")
 
 # -------- FILTER --------
 st.subheader("🔍 Filter")
@@ -96,6 +104,11 @@ for i, row in filtered.iterrows():
                 ])
 
                 st.success("✅ Booked")
+
+                # clear form
+                st.session_state.name = ""
+                st.session_state.phone = ""
+
                 st.rerun()
     else:
         st.error("❌ Full")
