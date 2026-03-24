@@ -182,41 +182,37 @@ elif st.session_state.page == "owner":
 # -------- ADD ROOM --------
 st.subheader("➕ Add Room")
 
-room = st.text_input("Room No", key="room_input")
+with st.form("add_room_form", clear_on_submit=True):
 
-floor = st.number_input("Floor", 1, key="floor_input")
+    room = st.text_input("Room No")
 
-sharing = st.selectbox("Sharing", [1,2,3,4,5], key="sharing_input")
+    floor = st.number_input("Floor", 1)
 
-beds = st.number_input("Beds", 0, sharing, key="beds_input")
+    sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-st.caption(f"Max beds = {sharing}")
+    beds = st.number_input("Beds", 0, sharing)
 
+    st.caption(f"Max beds = {sharing}")
 
-# ✅ SAVE BUTTON (NO EXTRA SPACE BEFORE THIS)
-if st.button("Save"):
+    submitted = st.form_submit_button("Save")
 
-    if room.strip() == "":
-        st.error("Enter room number")
-    else:
-        room_sheet.append_row([
-            pg,
-            room,
-            floor,
-            sharing,
-            beds,
-            datetime.now().strftime("%Y-%m-%d %H:%M"),
-            owner
-        ])
+    if submitted:
 
-        st.success("Room Added ✅")
+        if room.strip() == "":
+            st.error("Enter room number")
+        else:
+            room_sheet.append_row([
+                pg,
+                room,
+                floor,
+                sharing,
+                beds,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                owner
+            ])
 
-        st.session_state.room_input = ""
-        st.session_state.floor_input = 1
-        st.session_state.sharing_input = 1
-        st.session_state.beds_input = 1
-
-        st.rerun()
+            st.success("Room Added ✅")
+            st.rerun()
 
     # -------- VIEW ROOMS --------
     st.subheader("📊 My Rooms")
