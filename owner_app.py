@@ -197,19 +197,69 @@ elif st.session_state.page == "owner":
                 st.cache_data.clear()
                 st.rerun()
 
-    # -------- DISPLAY --------
-    st.subheader("📊 My Rooms")
+    # -------- DISPLAY + EDIT + DELETE --------
+st.subheader("📊 My Rooms")
 
-    if not my_df.empty:
+if not my_df.empty:
 
-        for f in my_df["floor"].unique():
-            st.markdown(f"### Floor {f}")
-            st.dataframe(my_df[my_df["floor"] == f])
+    for i, row in my_df.iterrows():
 
-    else:
-        st.info("No rooms added")
+        st.markdown("---")
 
-    if st.button("🚪 Logout"):
-        st.session_state.page = "login"
-        st.rerun()
+        col1, col2 = st.columns([3,1])
 
+        with col1:
+            st.write(f"🏠 Room: {row['room_no']}")
+            st.write(f"Floor: {row['floor']}")
+            st.write(f"Sharing: {row['sharing']}")
+            st.write(f"Beds: {row['available_beds']}")
+
+        with col2:
+
+            # DELETE BUTTON
+            if st.button("❌ Delete", key=f"del_room_{i}"):
+                room_sheet.delete_rows(i + 2)
+                st.success("Deleted")
+                st.cache_data.clear()
+                st.rerun()
+
+        # -------- EDIT SECTION --------
+        with st.expander("✏️ Edit Room"):
+
+            new_room = st.text_input("Room No", row["room_no"], key=f"room_{i}")
+            new_floor = st.number_input("Floor", value=int(row["floor"]), key=f"floor_{i}")
+            new_sharing = st.selectbox(
+                "Sharing",
+                [1,2,3,4,5],
+                index=[1,2,3,4,5].index(int(row["sharing"])),
+                key=f"sharing_{i}"
+            )
+
+            new_beds = st.number_input(
+                "Beds",
+                min_value=0,
+                max_value=int(new_sharing),
+                value=int(row["available_beds"]),
+                key=f"beds_{i}"
+            )
+
+            if st.button("💾 Update", key=f"update_{i}"):
+
+                updated_row = [
+                    pg,
+                    new_room,
+                    new_floor,
+                    new_sharing,
+                    new_beds,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    owner
+                ]
+
+                room_sheet.update(f"A{i+2}:G{i+2}", [updated_row])
+
+                st.success("Updated")
+                st.cache_data.clear()
+                st.rerun()
+
+else:
+    st.info("No rooms added")
