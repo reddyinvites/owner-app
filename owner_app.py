@@ -30,6 +30,9 @@ owner_sheet = sheet.worksheet("Owners")
 room_df = pd.DataFrame(room_sheet.get_all_records())
 owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
+# FIX COLUMN NAMES
+owner_df.columns = owner_df.columns.str.strip().str.lower()
+
 # -------- SESSION --------
 if "page" not in st.session_state:
     st.session_state.page = "login"
@@ -50,23 +53,24 @@ if st.session_state.page == "login":
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
-                st.success("Admin Login Success")
                 st.rerun()
             else:
                 st.error("Invalid Admin")
 
         # OWNER LOGIN
         else:
+            owner_df = pd.DataFrame(owner_sheet.get_all_records())
+            owner_df.columns = owner_df.columns.str.strip().str.lower()
+
             user = owner_df[
-                (owner_df["username"] == username) &
-                (owner_df["password"] == password)
+                (owner_df["username"].astype(str).str.lower().str.strip() == username.lower().strip()) &
+                (owner_df["password"].astype(str).str.strip() == password.strip())
             ]
 
             if not user.empty:
                 st.session_state.page = "owner"
                 st.session_state.owner = username
                 st.session_state.pg = user.iloc[0]["pg_name"]
-                st.success("Owner Login Success")
                 st.rerun()
             else:
                 st.error("Invalid Owner")
@@ -104,7 +108,8 @@ elif st.session_state.page == "admin":
     # -------- OWNER LIST --------
     elif menu == "📋 Owners List":
 
-        st.subheader("Owners")
+        owner_df = pd.DataFrame(owner_sheet.get_all_records())
+        owner_df.columns = owner_df.columns.str.strip().str.lower()
 
         if not owner_df.empty:
 
@@ -114,19 +119,15 @@ elif st.session_state.page == "admin":
 
                 col1, col2 = st.columns(2)
 
-                # DELETE
                 with col1:
                     if st.button("❌ Delete", key=f"del_{i}"):
                         owner_sheet.delete_rows(i+2)
-                        st.success("Deleted")
                         st.rerun()
 
-                # EDIT PASSWORD
                 with col2:
                     new_pass = st.text_input("New Password", key=f"pass_{i}")
                     if st.button("Update", key=f"upd_{i}"):
                         owner_sheet.update(f"B{i+2}", new_pass)
-                        st.success("Updated")
                         st.rerun()
 
                 st.divider()
@@ -137,7 +138,7 @@ elif st.session_state.page == "admin":
     # -------- PG DASHBOARD --------
     elif menu == "📊 PG Dashboard":
 
-        st.subheader("All PGs")
+        room_df = pd.DataFrame(room_sheet.get_all_records())
 
         if not room_df.empty:
 
@@ -151,7 +152,6 @@ elif st.session_state.page == "admin":
                     st.markdown(f"### Floor {f}")
                     st.dataframe(pg_df[pg_df["floor"] == f])
 
-    # LOGOUT
     if st.button("🚪 Logout"):
         st.session_state.page = "login"
         st.rerun()
@@ -166,17 +166,38 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
+    # -------- SESSION DEFAULTS --------
+    if "room_input" not in st.session_state:
+        st.session_state.room_input = ""
+
+    if "floor_input" not in st.session_state:
+        st.session_state.floor_input = 1
+
+    if "sharing_input" not in st.session_state:
+        st.session_state.sharing_input = 1
+
+    if "beds_input" not in st.session_state:
+        st.session_state.beds_input = 1
+
     # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
-    room = st.text_input("Room No")
-    floor = st.number_input("Floor", 1)
-    sharing = st.selectbox("Sharing", [1,2,3,4,5])
-    beds = st.number_input("Beds", 0, sharing)
+    room = st.text_input("Room No", key="room_input")
+
+    floor = st.number_input("Floor", 1, key="floor_input")
+
+    sharing = st.selectbox("Sharing", [1,2,3,4,5], key="sharing_input")
+
+    # ✅ AUTO SET BEDS = SHARING
+    st.session_state.beds_input = sharing
+
+    beds = st.number_input("Beds", 0, sharing, key="beds_input")
 
     if st.button("Save"):
 
-        if room:
+        if room.strip() == "":
+            st.error("Enter room number")
+        else:
             room_sheet.append_row([
                 pg,
                 room,
@@ -186,13 +207,21 @@ elif st.session_state.page == "owner":
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
                 owner
             ])
-            st.success("Room Added")
+
+            st.success("Room Added ✅")
+
+            # CLEAR FORM
+            st.session_state.room_input = ""
+            st.session_state.floor_input = 1
+            st.session_state.sharing_input = 1
+            st.session_state.beds_input = 1
+
             st.rerun()
-        else:
-            st.error("Enter room")
 
     # -------- VIEW ROOMS --------
     st.subheader("📊 My Rooms")
+
+    room_df = pd.DataFrame(room_sheet.get_all_records())
 
     my_df = room_df[room_df["owner_id"] == owner]
 
@@ -205,7 +234,6 @@ elif st.session_state.page == "owner":
     else:
         st.info("No rooms yet")
 
-    # LOGOUT
     if st.button("🚪 Logout"):
         st.session_state.page = "login"
         st.rerun()
