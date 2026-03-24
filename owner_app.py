@@ -179,43 +179,44 @@ elif st.session_state.page == "owner":
     if "beds_input" not in st.session_state:
         st.session_state.beds_input = 1
 
-    # -------- ADD ROOM --------
-    st.subheader("➕ Add Room")
+# -------- ADD ROOM --------
+st.subheader("➕ Add Room")
 
-    room = st.text_input("Room No", key="room_input")
+room = st.text_input("Room No", key="room_input")
 
-    floor = st.number_input("Floor", 1, key="floor_input")
+floor = st.number_input("Floor", 1, key="floor_input")
 
-    sharing = st.selectbox("Sharing", [1,2,3,4,5], key="sharing_input")
+sharing = st.selectbox("Sharing", [1,2,3,4,5], key="sharing_input")
 
 beds = st.number_input("Beds", 0, sharing, key="beds_input")
 
 st.caption(f"Max beds = {sharing}")
 
-    if st.button("Save"):
 
-        if room.strip() == "":
-            st.error("Enter room number")
-        else:
-            room_sheet.append_row([
-                pg,
-                room,
-                floor,
-                sharing,
-                beds,
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
-                owner
-            ])
+# ✅ SAVE BUTTON (NO EXTRA SPACE BEFORE THIS)
+if st.button("Save"):
 
-            st.success("Room Added ✅")
+    if room.strip() == "":
+        st.error("Enter room number")
+    else:
+        room_sheet.append_row([
+            pg,
+            room,
+            floor,
+            sharing,
+            beds,
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            owner
+        ])
 
-            # CLEAR FORM
-            st.session_state.room_input = ""
-            st.session_state.floor_input = 1
-            st.session_state.sharing_input = 1
-            st.session_state.beds_input = 1
+        st.success("Room Added ✅")
 
-            st.rerun()
+        st.session_state.room_input = ""
+        st.session_state.floor_input = 1
+        st.session_state.sharing_input = 1
+        st.session_state.beds_input = 1
+
+        st.rerun()
 
     # -------- VIEW ROOMS --------
     st.subheader("📊 My Rooms")
