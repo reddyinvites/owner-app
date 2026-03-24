@@ -31,7 +31,7 @@ except Exception as e:
     st.error(f"❌ ERROR: {e}")
     st.stop()
 
-# -------- CACHE (FIX 429 ERROR) --------
+# -------- CACHE (FIX QUOTA ERROR) --------
 @st.cache_data(ttl=30)
 def load_data():
     room_df = pd.DataFrame(room_sheet.get_all_records())
@@ -48,12 +48,6 @@ if st.button("🔄 Refresh Data"):
 # -------- SESSION --------
 if "page" not in st.session_state:
     st.session_state.page = "login"
-
-if "room_input" not in st.session_state:
-    st.session_state.room_input = ""
-
-if "beds_input" not in st.session_state:
-    st.session_state.beds_input = 0
 
 # ================= LOGIN =================
 if st.session_state.page == "login":
@@ -159,52 +153,49 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
-    # FILTER
+    # FILTER DATA
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
         my_df = pd.DataFrame()
 
-    # -------- ADD ROOM --------
+    # -------- ADD ROOM (FORM FIX) --------
     st.subheader("➕ Add Room")
 
-    room = st.text_input("Room No", key="room_input")
-    floor = st.number_input("Floor", min_value=1, step=1)
+    with st.form("add_room_form"):
 
-    sharing = st.selectbox("Sharing", [1,2,3,4,5])
+        room = st.text_input("Room No")
+        floor = st.number_input("Floor", min_value=1, step=1)
+        sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-    # ✅ FIXED: LIMIT BASED ON SHARING
-    beds = st.number_input(
-        "Available Beds",
-        min_value=0,
-        max_value=int(sharing),
-        step=1,
-        key="beds_input"
-    )
+        beds = st.number_input(
+            "Available Beds",
+            min_value=0,
+            max_value=int(sharing),  # ✅ limit
+            step=1
+        )
 
-    if st.button("Save"):
+        submit = st.form_submit_button("Save")
 
-        if room == "":
-            st.error("Enter Room Number")
-        else:
-            room_sheet.append_row([
-                pg,
-                room,
-                floor,
-                sharing,
-                beds,
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
-                owner
-            ])
+        if submit:
 
-            st.success("✅ Room Added")
+            if room == "":
+                st.error("Enter Room Number")
+            else:
+                room_sheet.append_row([
+                    pg,
+                    room,
+                    floor,
+                    sharing,
+                    beds,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    owner
+                ])
 
-            # CLEAR FORM
-            st.session_state.room_input = ""
-            st.session_state.beds_input = 0
+                st.success("✅ Room Added")
 
-            st.cache_data.clear()
-            st.rerun()
+                st.cache_data.clear()
+                st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
