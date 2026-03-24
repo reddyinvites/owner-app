@@ -121,22 +121,30 @@ st.subheader("📊 Room Data")
 
 if not df.empty:
 
-    # get unique PGs
     pgs = df["pg_name"].dropna().unique()
 
     for pg in pgs:
 
-        st.markdown(f"### 🏠 {pg}")
+        st.markdown(f"## 🏠 {pg}")
 
         pg_df = df[df["pg_name"] == pg].copy()
 
-        # convert room_no to number for proper sorting
+        # convert room_no to numeric
         pg_df["room_no"] = pd.to_numeric(pg_df["room_no"], errors="coerce")
 
-        # sort by floor and room
+        # sort
         pg_df = pg_df.sort_values(by=["floor", "room_no"])
 
-        st.dataframe(pg_df, use_container_width=True)
+        # 👉 GROUP BY FLOOR
+        floors = pg_df["floor"].unique()
+
+        for floor in floors:
+
+            st.markdown(f"### 🏢 Floor {int(floor)}")
+
+            floor_df = pg_df[pg_df["floor"] == floor]
+
+            st.dataframe(floor_df, use_container_width=True)
 
         st.markdown("---")
 
