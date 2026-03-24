@@ -20,14 +20,32 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
 
 client = gspread.authorize(creds)
 
-SHEET_ID = "YOUR_SHEET_ID"
+SHEET_ID = "YOUR_SHEET_ID".strip()
 
-room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
-owner_sheet = client.open_by_key(SHEET_ID).worksheet("Owners")
+# -------- SAFE CONNECTION --------
+try:
+    sheet = client.open_by_key(SHEET_ID)
+
+    st.success(f"✅ Connected: {sheet.title}")
+
+    # get sheets
+    room_sheet = sheet.get_worksheet(0)   # first sheet
+    owner_sheet = sheet.worksheet("Owners")
+
+except Exception as e:
+    st.error(f"❌ ERROR: {e}")
+    st.stop()
 
 # -------- LOAD DATA --------
-room_df = pd.DataFrame(room_sheet.get_all_records())
-owner_df = pd.DataFrame(owner_sheet.get_all_records())
+try:
+    room_df = pd.DataFrame(room_sheet.get_all_records())
+except:
+    room_df = pd.DataFrame()
+
+try:
+    owner_df = pd.DataFrame(owner_sheet.get_all_records())
+except:
+    owner_df = pd.DataFrame()
 
 # -------- SESSION --------
 if "page" not in st.session_state:
@@ -44,16 +62,15 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
+        # ADMIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
-                st.success("Admin Login Success")
                 st.rerun()
             else:
-                st.error("Invalid admin login")
+                st.error("Invalid admin")
 
-        # OWNER LOGIN
+        # OWNER
         else:
             user = owner_df[
                 (owner_df["username"].astype(str).str.strip() == username.strip()) &
@@ -64,10 +81,9 @@ if st.session_state.page == "login":
                 st.session_state.page = "owner"
                 st.session_state.owner = username
                 st.session_state.pg = user.iloc[0]["pg_name"]
-                st.success("Owner Login Success")
                 st.rerun()
             else:
-                st.error("Invalid owner login")
+                st.error("Invalid owner")
 
 # ================= ADMIN =================
 elif st.session_state.page == "admin":
@@ -79,11 +95,9 @@ elif st.session_state.page == "admin":
     # CREATE OWNER
     if menu == "➕ Create Owner":
 
-        st.subheader("Create Owner")
-
         new_pg = st.text_input("PG Name")
         new_user = st.text_input("Username")
-        new_pass = st.text_input("Password", type="password")
+        new_pass = st.text_input("Password")
 
         if st.button("Create"):
             owner_sheet.append_row([new_user, new_pass, new_pg])
@@ -92,8 +106,6 @@ elif st.session_state.page == "admin":
 
     # OWNER LIST
     elif menu == "📋 Owners List":
-
-        st.subheader("Owners")
 
         if not owner_df.empty:
 
@@ -169,7 +181,7 @@ elif st.session_state.page == "owner":
     if st.button("Save"):
 
         if beds > sharing:
-            st.warning("Fix beds value before saving")
+            st.warning("Fix beds value")
             st.stop()
 
         room_sheet.append_row([
@@ -195,16 +207,17 @@ elif st.session_state.page == "owner":
     # -------- MY ROOMS --------
     st.subheader("📊 My Rooms")
 
-    my_df = room_df[room_df["owner_id"] == owner]
+    if not room_df.empty:
+        my_df = room_df[room_df["owner_id"] == owner]
 
-    if not my_df.empty:
-
-        for f in my_df["floor"].unique():
-            st.markdown(f"### Floor {f}")
-            st.dataframe(my_df[my_df["floor"] == f])
-
+        if not my_df.empty:
+            for f in my_df["floor"].unique():
+                st.markdown(f"### Floor {f}")
+                st.dataframe(my_df[my_df["floor"] == f])
+        else:
+            st.info("No rooms yet")
     else:
-        st.info("No rooms added yet")
+        st.info("No data")
 
     if st.button("Logout"):
         st.session_state.page = "login"
