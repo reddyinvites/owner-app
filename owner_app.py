@@ -120,6 +120,25 @@ if st.button("💾 Save / Update"):
 st.subheader("📊 Room Data")
 
 if not df.empty:
-    st.dataframe(df, use_container_width=True)
+
+    # get unique PGs
+    pgs = df["pg_name"].dropna().unique()
+
+    for pg in pgs:
+
+        st.markdown(f"### 🏠 {pg}")
+
+        pg_df = df[df["pg_name"] == pg].copy()
+
+        # convert room_no to number for proper sorting
+        pg_df["room_no"] = pd.to_numeric(pg_df["room_no"], errors="coerce")
+
+        # sort by floor and room
+        pg_df = pg_df.sort_values(by=["floor", "room_no"])
+
+        st.dataframe(pg_df, use_container_width=True)
+
+        st.markdown("---")
+
 else:
     st.info("No rooms added yet")
