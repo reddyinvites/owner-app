@@ -26,15 +26,24 @@ try:
     sheet = client.open_by_key(SHEET_ID)
     room_sheet = sheet.worksheet("Sheet1")
     owner_sheet = sheet.worksheet("Owners")
-    booking_sheet = sheet.worksheet("Bookings")
     st.success("✅ Connected to Google Sheet")
 except Exception as e:
     st.error(f"❌ ERROR: {e}")
     st.stop()
 
-# -------- LOAD DATA --------
-room_df = pd.DataFrame(room_sheet.get_all_records())
-owner_df = pd.DataFrame(owner_sheet.get_all_records())
+# -------- CACHE (FIX 429 ERROR) --------
+@st.cache_data(ttl=30)
+def load_data():
+    room_df = pd.DataFrame(room_sheet.get_all_records())
+    owner_df = pd.DataFrame(owner_sheet.get_all_records())
+    return room_df, owner_df
+
+room_df, owner_df = load_data()
+
+# -------- REFRESH BUTTON --------
+if st.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
 
 # -------- SESSION --------
 if "page" not in st.session_state:
@@ -99,6 +108,7 @@ elif st.session_state.page == "admin":
         if st.button("Create"):
             owner_sheet.append_row([new_user, new_pass, new_pg])
             st.success("Owner Created")
+            st.cache_data.clear()
             st.rerun()
 
     # OWNER LIST
@@ -116,6 +126,7 @@ elif st.session_state.page == "admin":
 
                 if col4.button("❌", key=f"del_{i}"):
                     owner_sheet.delete_rows(i+2)
+                    st.cache_data.clear()
                     st.rerun()
 
         else:
@@ -148,7 +159,7 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
-    # FILTER DATA
+    # FILTER
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
@@ -162,10 +173,11 @@ elif st.session_state.page == "owner":
 
     sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-    # ✅ NO LIMIT (MANUAL ENTRY)
+    # ✅ FIXED: LIMIT BASED ON SHARING
     beds = st.number_input(
         "Available Beds",
         min_value=0,
+        max_value=int(sharing),
         step=1,
         key="beds_input"
     )
@@ -191,6 +203,7 @@ elif st.session_state.page == "owner":
             st.session_state.room_input = ""
             st.session_state.beds_input = 0
 
+            st.cache_data.clear()
             st.rerun()
 
     # -------- DISPLAY --------
