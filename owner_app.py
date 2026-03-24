@@ -27,12 +27,6 @@ sheet = client.open_by_key(SHEET_ID)
 room_sheet = sheet.worksheet("Sheet1")
 owner_sheet = sheet.worksheet("Owners")
 
-room_df = pd.DataFrame(room_sheet.get_all_records())
-owner_df = pd.DataFrame(owner_sheet.get_all_records())
-
-# FIX COLUMN NAMES
-owner_df.columns = owner_df.columns.str.strip().str.lower()
-
 # -------- SESSION --------
 if "page" not in st.session_state:
     st.session_state.page = "login"
@@ -161,65 +155,50 @@ elif st.session_state.page == "owner":
 
     st.header("🏠 Owner Dashboard")
 
-    owner = st.session_state.owner
-    pg = st.session_state.pg
+    st.info(f"PG: {st.session_state.pg}")
 
-    st.info(f"PG: {pg}")
+    # -------- ADD ROOM (FORM FIXED) --------
+    st.subheader("➕ Add Room")
 
-    # -------- SESSION DEFAULTS --------
-    if "room_input" not in st.session_state:
-        st.session_state.room_input = ""
+    with st.form("add_room_form", clear_on_submit=True):
 
-    if "floor_input" not in st.session_state:
-        st.session_state.floor_input = 1
+        room = st.text_input("Room No")
+        floor = st.number_input("Floor", 1)
+        sharing = st.selectbox("Sharing", [1,2,3,4,5])
+        beds = st.number_input("Beds", 0, sharing)
 
-    if "sharing_input" not in st.session_state:
-        st.session_state.sharing_input = 1
+        st.caption(f"Max beds = {sharing}")
 
-    if "beds_input" not in st.session_state:
-        st.session_state.beds_input = 1
+        submitted = st.form_submit_button("Save")
 
-# -------- ADD ROOM --------
-st.subheader("➕ Add Room")
+        if submitted:
 
-with st.form("add_room_form", clear_on_submit=True):
+            if room.strip() == "":
+                st.error("Enter room number")
+            else:
+                room_sheet.append_row([
+                    st.session_state.pg,
+                    room,
+                    floor,
+                    sharing,
+                    beds,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    st.session_state.owner
+                ])
 
-    room = st.text_input("Room No")
-
-    floor = st.number_input("Floor", 1)
-
-    sharing = st.selectbox("Sharing", [1,2,3,4,5])
-
-    beds = st.number_input("Beds", 0, sharing)
-
-    st.caption(f"Max beds = {sharing}")
-
-    submitted = st.form_submit_button("Save")
-
-    if submitted:
-
-        if room.strip() == "":
-            st.error("Enter room number")
-        else:
-            room_sheet.append_row([
-                pg,
-                room,
-                floor,
-                sharing,
-                beds,
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
-                owner
-            ])
-
-            st.success("Room Added ✅")
-            st.rerun()
+                st.success("Room Added ✅")
+                st.rerun()
 
     # -------- VIEW ROOMS --------
     st.subheader("📊 My Rooms")
 
     room_df = pd.DataFrame(room_sheet.get_all_records())
 
-    my_df = room_df[room_df["owner_id"] == owner]
+    if "owner" in st.session_state:
+        my_df = room_df[room_df["owner_id"] == st.session_state.owner]
+    else:
+        st.error("Login again")
+        st.stop()
 
     if not my_df.empty:
 
