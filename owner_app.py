@@ -188,10 +188,11 @@ elif st.session_state.page == "owner":
 
     sharing = st.selectbox("Sharing", [1,2,3,4,5], key="sharing_input")
 
-    # ✅ AUTO SET BEDS = SHARING
-    st.session_state.beds_input = sharing
+    sharing = st.selectbox("Sharing", [1,2,3,4,5], key="sharing_input")
 
-    beds = st.number_input("Beds", 0, sharing, key="beds_input")
+beds = st.number_input("Beds", 0, sharing, key="beds_input")
+
+st.caption(f"Max beds = {sharing}")
 
     if st.button("Save"):
 
