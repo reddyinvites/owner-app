@@ -8,7 +8,7 @@ st.set_page_config(page_title="PG Management System", layout="centered")
 
 st.title("🏠 PG Management System")
 
-# -------- GOOGLE SHEETS CONNECTION --------
+# -------- GOOGLE SHEETS --------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -58,16 +58,13 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
-                st.success("Admin Login Success")
                 st.rerun()
             else:
                 st.error("Invalid admin login")
 
-        # OWNER LOGIN
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -81,12 +78,9 @@ if st.session_state.page == "login":
                     st.session_state.page = "owner"
                     st.session_state.owner = username.strip()
                     st.session_state.pg = user.iloc[0]["pg_name"]
-                    st.success("Owner Login Success")
                     st.rerun()
                 else:
                     st.error("Invalid owner login")
-            else:
-                st.error("No owners found")
 
 # ================= ADMIN =================
 elif st.session_state.page == "admin":
@@ -97,8 +91,6 @@ elif st.session_state.page == "admin":
 
     # CREATE OWNER
     if menu == "➕ Create Owner":
-
-        st.subheader("Create Owner")
 
         new_pg = st.text_input("PG Name")
         new_user = st.text_input("Username")
@@ -156,7 +148,7 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
-    # FILTER OWNER DATA
+    # FILTER DATA
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
@@ -170,15 +162,13 @@ elif st.session_state.page == "owner":
 
     sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
+    # ✅ NO LIMIT (MANUAL ENTRY)
     beds = st.number_input(
         "Available Beds",
         min_value=0,
-        max_value=int(sharing),
         step=1,
         key="beds_input"
     )
-
-    st.caption(f"Max beds = {sharing}")
 
     if st.button("Save"):
 
