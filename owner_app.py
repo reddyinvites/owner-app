@@ -8,7 +8,7 @@ st.set_page_config(page_title="PG Management", layout="centered")
 
 st.title("🏠 PG Management System")
 
-# -------- GOOGLE SHEETS CONNECT --------
+# -------- GOOGLE SHEETS --------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -26,11 +26,15 @@ room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 owner_sheet = client.open_by_key(SHEET_ID).worksheet("Owners")
 
 # -------- LOAD DATA --------
-room_data = room_sheet.get_all_records()
-owner_data = owner_sheet.get_all_records()
+room_df = pd.DataFrame(room_sheet.get_all_records())
+owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
-room_df = pd.DataFrame(room_data)
-owner_df = pd.DataFrame(owner_data)
+# -------- LOGIN RESET FIX --------
+if "username_input" not in st.session_state:
+    st.session_state.username_input = ""
+
+if "password_input" not in st.session_state:
+    st.session_state.password_input = ""
 
 # -------- ROLE SELECT --------
 role = st.selectbox("Login as", ["Owner", "Admin"])
@@ -38,7 +42,7 @@ role = st.selectbox("Login as", ["Owner", "Admin"])
 # ================= ADMIN =================
 if role == "Admin":
 
-    st.subheader("🔐 Admin Login")
+    st.header("🧑‍💼 Admin Panel")
 
     admin_user = st.text_input("Admin Username")
     admin_pass = st.text_input("Admin Password", type="password")
@@ -47,13 +51,20 @@ if role == "Admin":
 
         st.success("✅ Admin Logged In")
 
+        # -------- CREATE OWNER --------
         st.subheader("➕ Create PG Owner")
 
-        new_pg = st.text_input("PG Name")
-        new_user = st.text_input("Username")
-        new_pass = st.text_input("Password", type="password")
+        col1, col2 = st.columns(2)
 
-        if st.button("Create Owner"):
+        with col1:
+            new_pg = st.text_input("🏠 PG Name")
+
+        with col2:
+            new_user = st.text_input("👤 Username")
+
+        new_pass = st.text_input("🔐 Password", type="password")
+
+        if st.button("🚀 Create Owner"):
 
             if new_pg and new_user and new_pass:
 
@@ -63,13 +74,81 @@ if role == "Admin":
                     new_pg
                 ])
 
+                st.session_state.username_input = ""
+                st.session_state.password_input = ""
+
                 st.success("✅ Owner Created")
                 st.rerun()
+
             else:
-                st.error("Fill all fields")
+                st.error("⚠️ Fill all fields")
+
+        st.markdown("---")
+
+        # -------- OWNERS TABLE --------
+        st.subheader("📋 All PG Owners")
+
+        if not owner_df.empty:
+
+            display_df = owner_df.copy()
+            display_df.columns = ["👤 Username", "🔐 Password", "🏠 PG Name"]
+
+            search = st.text_input("🔍 Search Owner")
+
+            if search:
+                display_df = display_df[
+                    display_df["👤 Username"].str.contains(search, case=False)
+                ]
+
+            st.dataframe(display_df, use_container_width=True)
+
+        else:
+            st.info("No owners available")
+
+        st.markdown("---")
+
+        # -------- ALL PG DASHBOARD --------
+        st.header("📊 All PGs Dashboard")
+
+        if not room_df.empty:
+
+            room_df["floor"] = pd.to_numeric(room_df["floor"], errors="coerce")
+            room_df["room_no"] = pd.to_numeric(room_df["room_no"], errors="coerce")
+            room_df["sharing"] = pd.to_numeric(room_df["sharing"], errors="coerce")
+            room_df["available_beds"] = pd.to_numeric(room_df["available_beds"], errors="coerce")
+
+            total_rooms = len(room_df)
+            total_beds = room_df["sharing"].sum()
+            available_beds = room_df["available_beds"].sum()
+
+            col1, col2, col3 = st.columns(3)
+            col1.metric("🏠 Total Rooms", total_rooms)
+            col2.metric("🛏 Total Beds", total_beds)
+            col3.metric("📉 Available Beds", available_beds)
+
+            st.markdown("---")
+
+            pgs = room_df["pg_name"].dropna().unique()
+
+            for pg in pgs:
+
+                st.markdown(f"## 🏠 {pg}")
+
+                pg_df = room_df[room_df["pg_name"] == pg]
+                pg_df = pg_df.sort_values(by=["floor", "room_no"])
+
+                for f in pg_df["floor"].dropna().unique():
+                    st.markdown(f"### 🏢 Floor {int(f)}")
+                    floor_df = pg_df[pg_df["floor"] == f]
+                    st.dataframe(floor_df, use_container_width=True)
+
+                st.markdown("---")
+
+        else:
+            st.info("No PG data")
 
     else:
-        st.info("Enter admin credentials")
+        st.info("🔐 Enter admin credentials")
 
 # ================= OWNER =================
 else:
@@ -81,8 +160,8 @@ else:
 
         st.subheader("🔐 Owner Login")
 
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+        username = st.text_input("Username", key="username_input")
+        password = st.text_input("Password", type="password", key="password_input")
 
         if st.button("Login"):
 
@@ -95,6 +174,10 @@ else:
                 st.session_state.login = True
                 st.session_state.username = username
                 st.session_state.pg = user.iloc[0]["pg_name"]
+
+                st.session_state.username_input = ""
+                st.session_state.password_input = ""
+
                 st.success("✅ Login successful")
                 st.rerun()
             else:
@@ -109,81 +192,43 @@ else:
     st.success(f"👤 Logged in as: {owner_id}")
     st.info(f"🏠 PG: {owner_pg}")
 
-    # -------- FILTER DATA --------
     if not room_df.empty:
         room_df = room_df[room_df["owner_id"] == owner_id]
 
     # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
-    room_no = st.text_input("Room Number (e.g. 101, 201)")
-    st.caption("💡 Tip: 101=Floor1, 201=Floor2")
-
+    room_no = st.text_input("Room Number")
     floor = st.number_input("Floor", min_value=1, step=1)
     sharing = st.selectbox("Sharing", [1,2,3,4,5,6])
     beds = st.number_input("Available Beds", min_value=0, max_value=sharing)
 
-    if beds > sharing:
-        st.error("Beds cannot exceed sharing")
+    if st.button("💾 Save Room"):
 
-    if st.button("💾 Save / Update"):
+        room_sheet.append_row([
+            owner_pg,
+            room_no,
+            floor,
+            sharing,
+            beds,
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            owner_id
+        ])
 
-        if room_no.strip() == "":
-            st.error("Enter room number")
-
-        else:
-            found = False
-
-            for i, row in enumerate(room_data):
-                if (
-                    str(row["room_no"]) == str(room_no) and
-                    row["owner_id"] == owner_id
-                ):
-                    # UPDATE
-                    room_sheet.update(f"A{i+2}:G{i+2}", [[
-                        owner_pg,
-                        room_no,
-                        int(floor),
-                        int(sharing),
-                        int(beds),
-                        datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        owner_id
-                    ]])
-                    st.success("✅ Room Updated")
-                    found = True
-                    break
-
-            if not found:
-                # ADD NEW
-                room_sheet.append_row([
-                    owner_pg,
-                    room_no,
-                    int(floor),
-                    int(sharing),
-                    int(beds),
-                    datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    owner_id
-                ])
-                st.success("✅ Room Added")
-
-            st.rerun()
+        st.success("Room Added")
+        st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 Your Rooms")
 
     if not room_df.empty:
-
-        # SORT BY FLOOR + ROOM
         room_df = room_df.sort_values(by=["floor", "room_no"])
 
-        for floor_no in sorted(room_df["floor"].unique()):
-            st.markdown(f"### 🏢 Floor {floor_no}")
-
-            floor_df = room_df[room_df["floor"] == floor_no]
-            st.dataframe(floor_df, use_container_width=True)
-
+        for f in room_df["floor"].unique():
+            st.markdown(f"### 🏢 Floor {int(f)}")
+            st.dataframe(room_df[room_df["floor"] == f], use_container_width=True)
     else:
-        st.info("No rooms added yet")
+        st.info("No rooms yet")
 
     # -------- LOGOUT --------
     if st.button("🚪 Logout"):
