@@ -8,15 +8,23 @@ st.set_page_config(page_title="Owner Dashboard", layout="centered")
 
 st.title("🏠 Owner - Manage Rooms")
 
-# -------- LOGIN SYSTEM --------
+# -------- OWNER LOGIN CONFIG --------
 users = {
-    "owner1": {"password": "123", "pg": "Amulya Gents PG"},
-    "owner2": {"password": "123", "pg": "Amulya Female Pgs"}
+    "gents_pg": {
+        "password": "gents@123",
+        "pg": "Amulya Gents PG"
+    },
+    "female_pg": {
+        "password": "female@123",
+        "pg": "Amulya Female Pgs"
+    }
 }
 
+# -------- SESSION --------
 if "login" not in st.session_state:
     st.session_state.login = False
 
+# -------- LOGIN SCREEN --------
 if not st.session_state.login:
     st.subheader("🔐 Owner Login")
 
@@ -38,10 +46,10 @@ if not st.session_state.login:
 owner = st.session_state.user
 owner_pg = users[owner]["pg"]
 
-st.success(f"👤 Logged in as: {owner}")
+st.success(f"👤 Logged in: {owner}")
 st.info(f"🏠 PG: {owner_pg}")
 
-# -------- GOOGLE SHEETS --------
+# -------- GOOGLE SHEETS CONNECT --------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -75,24 +83,25 @@ if not existing:
 data = sheet.get_all_records()
 df = pd.DataFrame(data)
 
-# -------- FILTER ONLY OWNER DATA --------
+# -------- FILTER OWNER DATA --------
 if not df.empty:
     df = df[df["pg_name"] == owner_pg]
 
-# -------- ADD / UPDATE --------
+# -------- ADD / UPDATE ROOM --------
 st.subheader("➕ Add / Update Room")
 
 room_no = st.text_input("Room Number (e.g. 101, 201)")
 st.caption("💡 Tip: 101=Floor1, 201=Floor2")
 
 floor = st.number_input("Floor", min_value=1, max_value=20, step=1)
-sharing = st.selectbox("Sharing", [1,2,3,4,5,6])
+sharing = st.selectbox("Sharing Type", [1,2,3,4,5,6])
 available = st.number_input("Available Beds", min_value=0, max_value=sharing)
 
 if st.button("💾 Save / Update"):
 
     if room_no.strip() == "":
-        st.error("Enter room number")
+        st.error("⚠️ Enter room number")
+
     else:
         all_data = sheet.get_all_records()
         found = False
@@ -102,6 +111,7 @@ if st.button("💾 Save / Update"):
                 row["pg_name"] == owner_pg and
                 str(row["room_no"]) == str(room_no)
             ):
+                # UPDATE
                 sheet.update(f"A{i+2}:F{i+2}", [[
                     owner_pg,
                     room_no,
@@ -110,11 +120,12 @@ if st.button("💾 Save / Update"):
                     int(available),
                     datetime.now().strftime("%Y-%m-%d %H:%M")
                 ]])
-                st.success("✅ Updated")
+                st.success("✅ Room Updated")
                 found = True
                 break
 
         if not found:
+            # ADD NEW
             sheet.append_row([
                 owner_pg,
                 room_no,
@@ -123,7 +134,7 @@ if st.button("💾 Save / Update"):
                 int(available),
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             ])
-            st.success("✅ Added")
+            st.success("✅ New Room Added")
 
         st.rerun()
 
@@ -145,7 +156,7 @@ if not df.empty:
         st.dataframe(floor_df, use_container_width=True)
 
 else:
-    st.info("No rooms yet")
+    st.info("No rooms added yet")
 
 # -------- LOGOUT --------
 if st.button("🚪 Logout"):
