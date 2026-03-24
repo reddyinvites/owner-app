@@ -8,21 +8,9 @@ import urllib.parse
 st.set_page_config(page_title="PG Booking", layout="centered")
 st.title("🏠 PG Booking")
 
-# -------- SESSION --------
-if "name" not in st.session_state:
-    st.session_state.name = ""
-
-if "phone" not in st.session_state:
-    st.session_state.phone = ""
-
-if "clear_form" not in st.session_state:
-    st.session_state.clear_form = False
-
-# -------- RESET FORM --------
-if st.session_state.clear_form:
-    st.session_state.name = ""
-    st.session_state.phone = ""
-    st.session_state.clear_form = False
+# -------- FORM RESET KEY --------
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
 
 # -------- GOOGLE SHEETS --------
 scope = [
@@ -51,8 +39,12 @@ owner_df = pd.DataFrame(owner_sheet.get_all_records())
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
 
-user_name = st.text_input("Your Name", key="name")
-phone = st.text_input("Phone Number", key="phone")
+user_name = st.text_input(
+    "Your Name", key=f"name_{st.session_state.form_key}"
+)
+phone = st.text_input(
+    "Phone Number", key=f"phone_{st.session_state.form_key}"
+)
 
 # -------- FILTER --------
 st.subheader("🔍 Filter")
@@ -88,33 +80,37 @@ for i, row in filtered.iterrows():
                 st.error("Enter name & phone")
                 st.stop()
 
+            # safe match
             match = room_df[
                 (room_df["pg_name"] == pg) &
                 (room_df["room_no"].astype(str) == room_no)
             ]
 
-            if not match.empty:
-                idx = match.index[0]
+            if match.empty:
+                st.error("Room not found")
+                st.stop()
 
-                # update beds
-                room_sheet.update(f"E{idx+2}", [[beds - 1]])
+            idx = match.index[0]
 
-                # save booking
-                booking_sheet.append_row([
-                    user_name,
-                    phone,
-                    pg,
-                    room_no,
-                    sharing,
-                    datetime.now().strftime("%Y-%m-%d %H:%M")
-                ])
+            # update beds
+            room_sheet.update(f"E{idx+2}", [[beds - 1]])
 
-                st.success("✅ Booking Confirmed")
+            # save booking
+            booking_sheet.append_row([
+                user_name,
+                phone,
+                pg,
+                room_no,
+                sharing,
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
 
-                # trigger clear form
-                st.session_state.clear_form = True
+            st.success("✅ Booking Confirmed")
 
-                st.rerun()
+            # 🔥 RESET FORM (IMPORTANT)
+            st.session_state.form_key += 1
+
+            st.rerun()
     else:
         st.error("❌ Full")
 
@@ -128,7 +124,6 @@ if not history_df.empty:
 
     for i, row in history_df.iterrows():
 
-        # DETAILS
         st.markdown(f"""
 👤 {row['user_name']}  
 📞 {row['phone']}  
@@ -140,20 +135,8 @@ if not history_df.empty:
 
         col1, col2 = st.columns(2)
 
-        # 📲 WHATSAPP
+        # -------- WHATSAPP --------
         with col1:
-
-            message = f"""
-New Booking
-
-Name: {row['user_name']}
-Phone: {row['phone']}
-PG: {row['pg_name']}
-Room: {row['room_no']}
-Sharing: {row['sharing']}
-"""
-
-            encoded = urllib.parse.quote(message)
 
             owner_row = owner_df[
                 owner_df["pg_name"].astype(str).str.strip() ==
@@ -162,12 +145,22 @@ Sharing: {row['sharing']}
 
             if not owner_row.empty:
                 owner_phone = str(owner_row.iloc[0]["phone"])
-                wa_link = f"https://wa.me/{owner_phone}?text={encoded}"
+
+                msg = f"""New Booking
+
+Name: {row['user_name']}
+Phone: {row['phone']}
+PG: {row['pg_name']}
+Room: {row['room_no']}
+Sharing: {row['sharing']}"""
+
+                wa_link = f"https://wa.me/{owner_phone}?text={urllib.parse.quote(msg)}"
+
                 st.link_button("📲 WhatsApp", wa_link)
             else:
                 st.button("📲 WhatsApp", disabled=True)
 
-        # ❌ CANCEL
+        # -------- CANCEL --------
         with col2:
             if st.button("❌ Cancel", key=f"cancel_{i}_{row['room_no']}"):
 
