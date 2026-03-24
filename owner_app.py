@@ -15,6 +15,15 @@ if "name" not in st.session_state:
 if "phone" not in st.session_state:
     st.session_state.phone = ""
 
+if "clear_form" not in st.session_state:
+    st.session_state.clear_form = False
+
+# -------- RESET FORM --------
+if st.session_state.clear_form:
+    st.session_state.name = ""
+    st.session_state.phone = ""
+    st.session_state.clear_form = False
+
 # -------- GOOGLE SHEETS --------
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -102,9 +111,8 @@ for i, row in filtered.iterrows():
 
                 st.success("✅ Booking Confirmed")
 
-                # clear form
-                st.session_state.name = ""
-                st.session_state.phone = ""
+                # trigger clear form
+                st.session_state.clear_form = True
 
                 st.rerun()
     else:
