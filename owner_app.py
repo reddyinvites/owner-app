@@ -61,7 +61,6 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -69,7 +68,6 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
-        # OWNER
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -92,8 +90,9 @@ elif st.session_state.page == "admin":
 
     st.header("🧑‍💼 Admin Dashboard")
 
-    menu = st.radio("Menu", ["➕ Create Owner", "📋 Owners List", "📊 PG Dashboard"])
+    menu = st.radio("Menu", ["➕ Create Owner", "📋 Owners List"])
 
+    # CREATE OWNER
     if menu == "➕ Create Owner":
 
         new_pg = st.text_input("PG Name")
@@ -106,10 +105,12 @@ elif st.session_state.page == "admin":
             st.cache_data.clear()
             st.rerun()
 
+    # OWNER LIST
     elif menu == "📋 Owners List":
 
         if not owner_df.empty:
             for i, row in owner_df.iterrows():
+
                 col1, col2, col3, col4 = st.columns([2,2,2,1])
 
                 col1.write(row["username"])
@@ -122,17 +123,6 @@ elif st.session_state.page == "admin":
                     st.rerun()
         else:
             st.info("No owners")
-
-    elif menu == "📊 PG Dashboard":
-
-        if not room_df.empty:
-            for pg in room_df["pg_name"].unique():
-                st.markdown(f"## 🏠 {pg}")
-                pg_df = room_df[room_df["pg_name"] == pg]
-
-                for f in pg_df["floor"].unique():
-                    st.markdown(f"### Floor {f}")
-                    st.dataframe(pg_df[pg_df["floor"] == f])
 
     if st.button("🚪 Logout"):
         st.session_state.page = "login"
@@ -148,7 +138,7 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
-    # FILTER DATA
+    # FILTER
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
@@ -160,30 +150,36 @@ elif st.session_state.page == "owner":
     room = st.text_input("Room No")
     floor = st.number_input("Floor", min_value=1, step=1)
     sharing = st.selectbox("Sharing", [1,2,3,4,5])
-
     beds = st.number_input("Available Beds", min_value=0, step=1)
+
+    # 🔥 LIVE WARNING (optional UX)
+    if beds > sharing:
+        st.warning(f"⚠️ Max allowed is {sharing}")
 
     if st.button("Save"):
 
         if room.strip() == "":
             st.error("Enter Room Number")
 
-        elif beds > sharing:
-            st.error(f"Beds cannot exceed sharing ({sharing})")
+        # ✅ MAIN FIX (STRICT VALIDATION)
+        elif int(beds) > int(sharing):
+            st.error(f"❌ Available beds cannot be more than sharing ({sharing})")
+
+        elif int(beds) < 0:
+            st.error("❌ Beds cannot be negative")
 
         else:
             room_sheet.append_row([
                 pg,
                 room,
                 floor,
-                sharing,
-                beds,
+                int(sharing),
+                int(beds),
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
                 owner
             ])
 
-            st.success("Room Added")
-
+            st.success("✅ Room Added")
             st.cache_data.clear()
             st.rerun()
 
