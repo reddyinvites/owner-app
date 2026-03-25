@@ -61,7 +61,7 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
+        # ADMIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -69,7 +69,7 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
-        # OWNER LOGIN
+        # OWNER
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -152,7 +152,7 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
-    # FILTER OWNER DATA
+    # FILTER DATA
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
@@ -168,41 +168,41 @@ elif st.session_state.page == "owner":
 
         sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-        st.caption(f"Max beds allowed: {sharing}")
-
         # SHOW LIMIT
-st.info(f"Max beds allowed: {sharing}")
+        st.info(f"Max beds allowed: {sharing}")
 
-# FIXED INPUT (NO max_value)
-beds = st.number_input(
-    "Available Beds",
-    min_value=0,
-    step=1
-)
+        # NO max_value (FIXED)
+        beds = st.number_input(
+            "Available Beds",
+            min_value=0,
+            step=1
+        )
+
+        submit = st.form_submit_button("Save")
 
         if submit:
 
-    if room == "":
-        st.error("Enter Room Number")
+            if room == "":
+                st.error("Enter Room Number")
 
-    elif beds > sharing:
-        st.error(f"❌ Beds cannot exceed sharing ({sharing})")
+            elif beds > sharing:
+                st.error(f"❌ Beds cannot exceed sharing ({sharing})")
 
-    else:
-        room_sheet.append_row([
-            pg,
-            room,
-            floor,
-            sharing,
-            beds,
-            datetime.now().strftime("%Y-%m-%d %H:%M"),
-            owner
-        ])
+            else:
+                room_sheet.append_row([
+                    pg,
+                    room,
+                    floor,
+                    sharing,
+                    beds,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    owner
+                ])
 
-        st.success("✅ Room Added")
-        st.cache_data.clear()
-        st.rerun()
+                st.success("✅ Room Added")
 
+                st.cache_data.clear()
+                st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
