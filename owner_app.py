@@ -170,38 +170,38 @@ elif st.session_state.page == "owner":
 
         st.caption(f"Max beds allowed: {sharing}")
 
-        beds = st.number_input(
-            "Available Beds",
-            min_value=0,
-            max_value=sharing,
-            step=1
-        )
+        # SHOW LIMIT
+st.info(f"Max beds allowed: {sharing}")
 
-        submit = st.form_submit_button("Save")
+# FIXED INPUT (NO max_value)
+beds = st.number_input(
+    "Available Beds",
+    min_value=0,
+    step=1
+)
 
         if submit:
 
-            if room == "":
-                st.error("Enter Room Number")
+    if room == "":
+        st.error("Enter Room Number")
 
-            elif beds > sharing:
-                st.error(f"❌ Beds cannot exceed sharing ({sharing})")
+    elif beds > sharing:
+        st.error(f"❌ Beds cannot exceed sharing ({sharing})")
 
-            else:
-                room_sheet.append_row([
-                    pg,
-                    room,
-                    floor,
-                    sharing,
-                    beds,
-                    datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    owner
-                ])
+    else:
+        room_sheet.append_row([
+            pg,
+            room,
+            floor,
+            sharing,
+            beds,
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            owner
+        ])
 
-                st.success("✅ Room Added")
-
-                st.cache_data.clear()
-                st.rerun()
+        st.success("✅ Room Added")
+        st.cache_data.clear()
+        st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
