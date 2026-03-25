@@ -153,51 +153,44 @@ elif st.session_state.page == "owner":
         my_df = pd.DataFrame()
 
     # -------- ADD ROOM --------
-    st.subheader("➕ Add Room")
+st.subheader("➕ Add Room")
 
-    with st.form("add_room_form"):
+room = st.text_input("Room No")
+floor = st.number_input("Floor", min_value=1, step=1)
 
-        room = st.text_input("Room No")
-        floor = st.number_input("Floor", min_value=1, step=1)
+sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-        sharing = st.selectbox("Sharing", [1,2,3,4,5])
+# ✅ ALWAYS CORRECT NOW
+st.success(f"Max beds allowed: {sharing}")
 
-        # ✅ CORRECT DISPLAY
-        st.success(f"Max beds allowed: {sharing}")
+beds = st.number_input(
+    "Available Beds",
+    min_value=0,
+    step=1
+)
 
-        beds = st.number_input(
-            "Available Beds",
-            min_value=0,
-            value=0,
-            step=1
-        )
+if st.button("Save"):
 
-        submit = st.form_submit_button("Save")
+    if room.strip() == "":
+        st.error("Enter Room Number")
 
-        if submit:
+    elif beds > sharing:
+        st.error(f"❌ Beds ({beds}) cannot exceed Sharing ({sharing})")
 
-            if room.strip() == "":
-                st.error("Enter Room Number")
+    else:
+        room_sheet.append_row([
+            pg,
+            room,
+            floor,
+            sharing,
+            beds,
+            datetime.now().strftime("%Y-%m-%d %H:%M"),
+            owner
+        ])
 
-            # ✅ STRICT VALIDATION
-            elif beds > sharing:
-                st.error(f"❌ Beds ({beds}) cannot exceed Sharing ({sharing})")
-
-            else:
-                room_sheet.append_row([
-                    pg,
-                    room,
-                    floor,
-                    sharing,
-                    beds,
-                    datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    owner
-                ])
-
-                st.success("✅ Room Added")
-
-                st.cache_data.clear()
-                st.rerun()
+        st.success("✅ Room Added")
+        st.cache_data.clear()
+        st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
