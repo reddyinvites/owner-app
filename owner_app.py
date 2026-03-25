@@ -61,7 +61,6 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -69,7 +68,6 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
-        # OWNER
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -94,7 +92,6 @@ elif st.session_state.page == "admin":
 
     menu = st.radio("Menu", ["➕ Create Owner", "📋 Owners List", "📊 PG Dashboard"])
 
-    # CREATE OWNER
     if menu == "➕ Create Owner":
 
         new_pg = st.text_input("PG Name")
@@ -107,7 +104,6 @@ elif st.session_state.page == "admin":
             st.cache_data.clear()
             st.rerun()
 
-    # OWNER LIST
     elif menu == "📋 Owners List":
 
         if not owner_df.empty:
@@ -126,7 +122,6 @@ elif st.session_state.page == "admin":
         else:
             st.info("No owners")
 
-    # PG DASHBOARD
     elif menu == "📊 PG Dashboard":
 
         if not room_df.empty:
@@ -152,7 +147,6 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
-    # FILTER DATA
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
@@ -163,49 +157,47 @@ elif st.session_state.page == "owner":
 
     with st.form("add_room_form"):
 
-    room = st.text_input("Room No")
-    floor = st.number_input("Floor", min_value=1, step=1)
+        room = st.text_input("Room No")
+        floor = st.number_input("Floor", min_value=1, step=1)
 
-    sharing = st.selectbox("Sharing", [1,2,3,4,5])
+        sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-    # ✅ CORRECT DISPLAY
-    st.success(f"Max beds allowed: {sharing}")
+        # ✅ CORRECT DISPLAY
+        st.success(f"Max beds allowed: {sharing}")
 
-    # RESET default value safely
-    beds = st.number_input(
-        "Available Beds",
-        min_value=0,
-        value=0,
-        step=1
-    )
+        beds = st.number_input(
+            "Available Beds",
+            min_value=0,
+            value=0,
+            step=1
+        )
 
-    submit = st.form_submit_button("Save")
+        submit = st.form_submit_button("Save")
 
-    if submit:
+        if submit:
 
-        # ❌ EMPTY ROOM
-        if room.strip() == "":
-            st.error("Enter Room Number")
+            if room.strip() == "":
+                st.error("Enter Room Number")
 
-        # ❌ STRICT VALIDATION
-        elif beds > sharing:
-            st.error(f"❌ ERROR: Beds ({beds}) cannot be more than Sharing ({sharing})")
+            # ✅ STRICT VALIDATION
+            elif beds > sharing:
+                st.error(f"❌ Beds ({beds}) cannot exceed Sharing ({sharing})")
 
-        else:
-            room_sheet.append_row([
-                pg,
-                room,
-                floor,
-                sharing,
-                beds,
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
-                owner
-            ])
+            else:
+                room_sheet.append_row([
+                    pg,
+                    room,
+                    floor,
+                    sharing,
+                    beds,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    owner
+                ])
 
-            st.success("✅ Room Added")
+                st.success("✅ Room Added")
 
-            st.cache_data.clear()
-            st.rerun()
+                st.cache_data.clear()
+                st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
