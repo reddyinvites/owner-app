@@ -61,6 +61,7 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
+        # ADMIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -68,6 +69,7 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
+        # OWNER
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -107,7 +109,6 @@ elif st.session_state.page == "admin":
     elif menu == "📋 Owners List":
 
         if not owner_df.empty:
-
             for i, row in owner_df.iterrows():
                 col1, col2, col3, col4 = st.columns([2,2,2,1])
 
@@ -147,60 +148,52 @@ elif st.session_state.page == "owner":
 
     st.info(f"PG: {pg}")
 
+    # FILTER DATA
     if not room_df.empty:
         my_df = room_df[room_df["owner_id"].astype(str) == owner]
     else:
         my_df = pd.DataFrame()
 
     # -------- ADD ROOM --------
-st.subheader("➕ Add Room")
+    st.subheader("➕ Add Room")
 
-room = st.text_input("Room No")
-floor = st.number_input("Floor", min_value=1, step=1)
+    room = st.text_input("Room No")
+    floor = st.number_input("Floor", min_value=1, step=1)
+    sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
-sharing = st.selectbox("Sharing", [1,2,3,4,5])
+    beds = st.number_input("Available Beds", min_value=0, step=1)
 
-# ✅ ALWAYS CORRECT NOW
-st.success(f"Max beds allowed: {sharing}")
+    if st.button("Save"):
 
-beds = st.number_input(
-    "Available Beds",
-    min_value=0,
-    step=1
-)
+        if room.strip() == "":
+            st.error("Enter Room Number")
 
-if st.button("Save"):
+        elif beds > sharing:
+            st.error(f"Beds cannot exceed sharing ({sharing})")
 
-    if room.strip() == "":
-        st.error("Enter Room Number")
+        else:
+            room_sheet.append_row([
+                pg,
+                room,
+                floor,
+                sharing,
+                beds,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                owner
+            ])
 
-    elif beds > sharing:
-        st.error(f"❌ Beds ({beds}) cannot exceed Sharing ({sharing})")
+            st.success("Room Added")
 
-    else:
-        room_sheet.append_row([
-            pg,
-            room,
-            floor,
-            sharing,
-            beds,
-            datetime.now().strftime("%Y-%m-%d %H:%M"),
-            owner
-        ])
-
-        st.success("✅ Room Added")
-        st.cache_data.clear()
-        st.rerun()
+            st.cache_data.clear()
+            st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
 
     if not my_df.empty:
-
         for f in my_df["floor"].unique():
             st.markdown(f"### Floor {f}")
             st.dataframe(my_df[my_df["floor"] == f])
-
     else:
         st.info("No rooms added")
 
