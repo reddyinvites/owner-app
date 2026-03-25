@@ -61,7 +61,6 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -69,7 +68,6 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
-        # OWNER LOGIN
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -94,7 +92,6 @@ elif st.session_state.page == "admin":
 
     menu = st.radio("Menu", ["➕ Create Owner", "📋 Owners List", "📊 PG Dashboard"])
 
-    # CREATE OWNER
     if menu == "➕ Create Owner":
 
         new_pg = st.text_input("PG Name")
@@ -107,7 +104,6 @@ elif st.session_state.page == "admin":
             st.cache_data.clear()
             st.rerun()
 
-    # OWNER LIST
     elif menu == "📋 Owners List":
 
         if not owner_df.empty:
@@ -128,7 +124,6 @@ elif st.session_state.page == "admin":
         else:
             st.info("No owners")
 
-    # PG DASHBOARD
     elif menu == "📊 PG Dashboard":
 
         if not room_df.empty:
@@ -161,6 +156,10 @@ elif st.session_state.page == "owner":
     else:
         my_df = pd.DataFrame()
 
+    # -------- FORM STATE --------
+    if "beds_input" not in st.session_state:
+        st.session_state.beds_input = 0
+
     # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
@@ -168,14 +167,21 @@ elif st.session_state.page == "owner":
 
         room = st.text_input("Room No")
         floor = st.number_input("Floor", min_value=1, step=1)
+
         sharing = st.selectbox("Sharing", [1,2,3,4,5])
+
+        # 🔥 AUTO CONTROL
+        if st.session_state.beds_input > sharing:
+            st.session_state.beds_input = sharing
 
         st.caption(f"Max beds allowed: {sharing}")
 
         beds = st.number_input(
             "Available Beds",
             min_value=0,
-            step=1
+            max_value=sharing,
+            step=1,
+            key="beds_input"
         )
 
         submit = st.form_submit_button("Save")
@@ -201,6 +207,9 @@ elif st.session_state.page == "owner":
 
                 st.success("✅ Room Added")
 
+                # RESET FORM
+                st.session_state.beds_input = 0
+
                 st.cache_data.clear()
                 st.rerun()
 
@@ -209,7 +218,7 @@ elif st.session_state.page == "owner":
 
     if not my_df.empty:
 
-        for f in my_df["floor"].unique():
+        for f in sorted(my_df["floor"].unique()):
             st.markdown(f"### Floor {f}")
             st.dataframe(my_df[my_df["floor"] == f])
 
