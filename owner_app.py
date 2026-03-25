@@ -203,6 +203,7 @@ beds = st.number_input(
         st.cache_data.clear()
         st.rerun()
 
+
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
 
