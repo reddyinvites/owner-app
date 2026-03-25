@@ -31,7 +31,7 @@ except Exception as e:
     st.error(f"❌ ERROR: {e}")
     st.stop()
 
-# -------- CACHE (FIX QUOTA ERROR) --------
+# -------- CACHE --------
 @st.cache_data(ttl=30)
 def load_data():
     room_df = pd.DataFrame(room_sheet.get_all_records())
@@ -40,7 +40,7 @@ def load_data():
 
 room_df, owner_df = load_data()
 
-# -------- REFRESH BUTTON --------
+# -------- REFRESH --------
 if st.button("🔄 Refresh Data"):
     st.cache_data.clear()
     st.rerun()
@@ -61,6 +61,7 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
+        # ADMIN LOGIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -68,6 +69,7 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
+        # OWNER LOGIN
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -159,7 +161,7 @@ elif st.session_state.page == "owner":
     else:
         my_df = pd.DataFrame()
 
-    # -------- ADD ROOM (FORM FIX) --------
+    # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
     with st.form("add_room_form"):
@@ -168,10 +170,11 @@ elif st.session_state.page == "owner":
         floor = st.number_input("Floor", min_value=1, step=1)
         sharing = st.selectbox("Sharing", [1,2,3,4,5])
 
+        st.caption(f"Max beds allowed: {sharing}")
+
         beds = st.number_input(
             "Available Beds",
             min_value=0,
-            max_value=int(sharing),  # ✅ limit
             step=1
         )
 
@@ -181,6 +184,10 @@ elif st.session_state.page == "owner":
 
             if room == "":
                 st.error("Enter Room Number")
+
+            elif beds > sharing:
+                st.error(f"❌ Beds cannot exceed sharing ({sharing})")
+
             else:
                 room_sheet.append_row([
                     pg,
