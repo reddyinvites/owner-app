@@ -36,7 +36,6 @@ def load():
     pg = pd.DataFrame(pg_sheet.get_all_records())
     rooms = pd.DataFrame(room_sheet.get_all_records())
 
-    # SAFE COLUMN CLEAN
     if not owners.empty:
         owners.columns = [str(c).strip().lower() for c in owners.columns]
 
@@ -109,26 +108,39 @@ elif st.session_state.page == "admin":
 
     if st.button("Create"):
 
-        if username.strip() == "" or password.strip() == "" or pg_id.strip() == "":
-            st.error("Fill all fields")
+        # VALIDATION
+        if not all([pg_id, pg_name, location, owner_name, owner_number, username, password]):
+            st.error("❌ Fill all fields")
 
         elif not owners_df.empty and username in owners_df["username"].astype(str).tolist():
-            st.error("❌ Username exists")
+            st.error("❌ Username already exists")
 
         else:
-            # SAVE PG DATA
-            pg_sheet.append_row([
-                pg_id, pg_name, location, owner_name, owner_number
-            ])
+            try:
+                # ✅ SAVE PG DATA (MAIN FIX)
+                pg_sheet.append_row([
+                    pg_id,
+                    pg_name,
+                    location,
+                    owner_name,
+                    owner_number
+                ])
 
-            # SAVE OWNER LOGIN
-            owners_sheet.append_row([
-                username, password, pg_id
-            ])
+                # ✅ SAVE OWNER LOGIN
+                owners_sheet.append_row([
+                    username,
+                    password,
+                    pg_id
+                ])
 
-            st.success("🎉 PG + Owner Created")
-            st.cache_data.clear()
-            st.rerun()
+                st.balloons()
+                st.success("🎉 PG + Owner Created Successfully")
+
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error saving data: {e}")
 
     if st.button("Logout"):
         st.session_state.page = "login"
@@ -151,7 +163,7 @@ elif st.session_state.page == "owner":
         st.info(f"🏠 {pg_row.iloc[0]['pg_name']} | 📍 {pg_row.iloc[0]['location']}")
         st.write(f"👤 {pg_row.iloc[0]['owner_name']} | 📞 {pg_row.iloc[0]['owner_number']}")
     else:
-        st.warning("PG data not found")
+        st.warning("⚠️ PG data not found (Check pg_data sheet)")
 
     # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
@@ -182,7 +194,7 @@ elif st.session_state.page == "owner":
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             ])
 
-            st.success("🎉 Room Added")
+            st.success("🎉 Room Added Successfully")
             st.cache_data.clear()
             st.rerun()
 
