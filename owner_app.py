@@ -3,11 +3,13 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import random
 
-st.set_page_config(page_title="PG PRO SYSTEM", layout="centered")
+st.set_page_config(page_title="PG PRO Management System", layout="centered")
+
 st.title("🏠 PG PRO Management System")
 
-# -------- GOOGLE SHEETS --------
+# ---------------- GOOGLE SHEETS ----------------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -23,33 +25,37 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
 sheet = client.open_by_key(SHEET_ID)
 
-owners_sheet = sheet.worksheet("Owners")
 pg_sheet = sheet.worksheet("pg_data")
 room_sheet = sheet.worksheet("rooms")
+owner_sheet = sheet.worksheet("Owners")
 
 st.success("✅ Connected to Google Sheets")
 
-# -------- LOAD SAFE --------
+# ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=30)
-def load():
-    owners = pd.DataFrame(owners_sheet.get_all_records())
-    pg = pd.DataFrame(pg_sheet.get_all_records())
-    rooms = pd.DataFrame(room_sheet.get_all_records())
+def load_data():
+    pg_df = pd.DataFrame(pg_sheet.get_all_records())
+    room_df = pd.DataFrame(room_sheet.get_all_records())
+    owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
-    if not owners.empty:
-        owners.columns = [str(c).strip().lower() for c in owners.columns]
+    if not pg_df.empty:
+        pg_df.columns = [str(c).strip().lower() for c in pg_df.columns]
 
-    if not pg.empty:
-        pg.columns = [str(c).strip().lower() for c in pg.columns]
+    if not room_df.empty:
+        room_df.columns = [str(c).strip().lower() for c in room_df.columns]
 
-    if not rooms.empty:
-        rooms.columns = [str(c).strip().lower() for c in rooms.columns]
+    if not owner_df.empty:
+        owner_df.columns = [str(c).strip().lower() for c in owner_df.columns]
 
-    return owners, pg, rooms
+    return pg_df, room_df, owner_df
 
-owners_df, pg_df, room_df = load()
+pg_df, room_df, owner_df = load_data()
 
-# -------- SESSION --------
+# ---------------- GENERATE PG ID ----------------
+def generate_pg_id():
+    return "PG" + str(random.randint(1000, 9999))
+
+# ---------------- SESSION ----------------
 if "page" not in st.session_state:
     st.session_state.page = "login"
 
@@ -59,65 +65,72 @@ if st.session_state.page == "login":
     st.subheader("🔐 Login")
 
     role = st.selectbox("Login as", ["Owner", "Admin"])
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
     if st.button("Login"):
 
         if role == "Admin":
-            if user == "admin" and pwd == "admin123":
+            if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
                 st.rerun()
             else:
-                st.error("Invalid admin")
+                st.error("Invalid admin login")
 
         else:
-            if not owners_df.empty:
-                u = owners_df[
-                    (owners_df["username"] == user) &
-                    (owners_df["password"] == pwd)
+            if not owner_df.empty:
+
+                user = owner_df[
+                    (owner_df["username"].astype(str).str.strip() == username.strip()) &
+                    (owner_df["password"].astype(str).str.strip() == password.strip())
                 ]
 
-                if not u.empty:
-                    pg_id = str(u.iloc[0]["pg_id"])
-
+                if not user.empty:
                     st.session_state.page = "owner"
-                    st.session_state.pg_id = pg_id
-                    st.session_state.username = user
+                    st.session_state.owner = username.strip()
+                    st.session_state.pg = user.iloc[0]["pg_id"]
                     st.rerun()
                 else:
-                    st.error("Invalid login")
-            else:
-                st.error("No owners found")
+                    st.error("Invalid owner login")
 
 # ================= ADMIN =================
 elif st.session_state.page == "admin":
 
     st.header("🧑‍💼 Admin Dashboard")
 
-    st.subheader("➕ Create PG + Owner")
+    menu = st.radio("Menu", ["➕ Create Owner & PG", "📋 Owners List"])
 
-    pg_id = st.text_input("PG ID (Ex: PG001)")
-    pg_name = st.text_input("PG Name")
-    location = st.text_input("Location")
-    owner_name = st.text_input("Owner Name")
-    owner_number = st.text_input("Owner Number")
+    # -------- CREATE OWNER + PG --------
+    if menu == "➕ Create Owner & PG":
 
-    username = st.text_input("Login Username")
-    password = st.text_input("Login Password")
+        new_user = st.text_input("Username")
+        new_pass = st.text_input("Password", type="password")
 
-    if st.button("Create"):
+        pg_name = st.text_input("PG Name")
+        location = st.text_input("Location")
+        owner_name = st.text_input("Owner Name")
+        owner_number = st.text_input("Owner Number")
 
-        # VALIDATION
-        if not all([pg_id, pg_name, location, owner_name, owner_number, username, password]):
-            st.error("❌ Fill all fields")
+        if st.button("Create"):
 
-        elif not owners_df.empty and username in owners_df["username"].astype(str).tolist():
-            st.error("❌ Username already exists")
+            if new_user == "" or new_pass == "" or pg_name == "":
+                st.error("Fill all fields")
 
-        else:
-            try:
-                # ✅ SAVE PG DATA (MAIN FIX)
+            else:
+                # DUPLICATE CHECK
+                if not owner_df.empty:
+                    users = owner_df["username"].astype(str).tolist()
+                    if new_user in users:
+                        st.error("Username already exists")
+                        st.stop()
+
+                pg_id = generate_pg_id()
+
+                # SAVE OWNER
+                owner_sheet.append_row([new_user, new_pass, pg_id])
+
+                # SAVE PG DATA
                 pg_sheet.append_row([
                     pg_id,
                     pg_name,
@@ -126,23 +139,20 @@ elif st.session_state.page == "admin":
                     owner_number
                 ])
 
-                # ✅ SAVE OWNER LOGIN
-                owners_sheet.append_row([
-                    username,
-                    password,
-                    pg_id
-                ])
-
-                st.balloons()
-                st.success("🎉 PG + Owner Created Successfully")
+                st.success(f"🎉 Created Successfully (PG ID: {pg_id})")
 
                 st.cache_data.clear()
                 st.rerun()
 
-            except Exception as e:
-                st.error(f"Error saving data: {e}")
+    # -------- OWNER LIST --------
+    elif menu == "📋 Owners List":
 
-    if st.button("Logout"):
+        if not owner_df.empty:
+            st.dataframe(owner_df)
+        else:
+            st.info("No owners")
+
+    if st.button("🚪 Logout"):
         st.session_state.page = "login"
         st.rerun()
 
@@ -151,19 +161,20 @@ elif st.session_state.page == "owner":
 
     st.header("🏠 Owner Dashboard")
 
-    pg_id = st.session_state.pg_id
+    pg_id = st.session_state.pg
 
-    # -------- FETCH PG DETAILS --------
-    if not pg_df.empty:
-        pg_row = pg_df[pg_df["pg_id"].astype(str) == str(pg_id)]
-    else:
-        pg_row = pd.DataFrame()
+    st.info(f"PG ID: {pg_id}")
+
+    # -------- SHOW PG DETAILS --------
+    pg_row = pg_df[pg_df["pg_id"].astype(str) == str(pg_id)]
 
     if not pg_row.empty:
-        st.info(f"🏠 {pg_row.iloc[0]['pg_name']} | 📍 {pg_row.iloc[0]['location']}")
-        st.write(f"👤 {pg_row.iloc[0]['owner_name']} | 📞 {pg_row.iloc[0]['owner_number']}")
+        st.success(f"🏠 {pg_row.iloc[0]['pg_name']}")
+        st.write(f"📍 {pg_row.iloc[0]['location']}")
+        st.write(f"👤 {pg_row.iloc[0]['owner_name']}")
+        st.write(f"📞 {pg_row.iloc[0]['owner_number']}")
     else:
-        st.warning("⚠️ PG data not found (Check pg_data sheet)")
+        st.warning("PG data not found")
 
     # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
@@ -174,15 +185,15 @@ elif st.session_state.page == "owner":
     beds = st.number_input("Available Beds", min_value=0)
 
     if beds > sharing:
-        st.warning("Beds > sharing not allowed")
+        st.warning("Beds cannot exceed sharing")
 
     if st.button("Save Room"):
 
-        if room.strip() == "":
+        if room == "":
             st.error("Enter Room No")
 
         elif beds > sharing:
-            st.error("Beds cannot exceed sharing")
+            st.error("Invalid beds")
 
         else:
             room_sheet.append_row([
@@ -194,23 +205,21 @@ elif st.session_state.page == "owner":
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             ])
 
-            st.success("🎉 Room Added Successfully")
+            st.success("Room Added ✅")
+
             st.cache_data.clear()
             st.rerun()
 
-    # -------- VIEW ROOMS --------
+    # -------- SHOW ROOMS --------
     st.subheader("📊 My Rooms")
 
-    if not room_df.empty:
-        my_rooms = room_df[room_df["pg_id"].astype(str) == str(pg_id)]
-    else:
-        my_rooms = pd.DataFrame()
+    my_rooms = room_df[room_df["pg_id"].astype(str) == str(pg_id)]
 
     if not my_rooms.empty:
-        st.dataframe(my_rooms, use_container_width=True)
+        st.dataframe(my_rooms)
     else:
         st.info("No rooms added")
 
-    if st.button("Logout"):
+    if st.button("🚪 Logout"):
         st.session_state.page = "login"
         st.rerun()
