@@ -1,65 +1,97 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
-st.title("🏠 PG Management System")
-
-# ---------- AUTH ----------
+# -------------------------------
+# GOOGLE SHEETS CONNECT
+# -------------------------------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    st.secrets["gcp"], scope
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=scope
 )
 
 client = gspread.authorize(creds)
 
-# ---------- ONE FILE ----------
-FILE_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
+# -------------------------------
+# YOUR FILE IDS
+# -------------------------------
+PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
+PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-file = client.open_by_key(FILE_ID)
+# -------------------------------
+# LOAD DATA
+# -------------------------------
+@st.cache_data
+def load_data():
+    # PG DATA FILE
+    pg_data_file = client.open_by_key(PG_DATA_ID)
+    pg_sheet = pg_data_file.worksheet("pg_data")
+    pg_df = pd.DataFrame(pg_sheet.get_all_records())
 
-# ✅ ALL SHEETS FROM SAME FILE
-pg_sheet = file.worksheet("Sheet1")   # PG DATA
-owners_sheet = file.worksheet("Owners")  # Owners
-rooms_sheet = file.worksheet("rooms")  # Rooms
+    # APP FILE
+    app_file = client.open_by_key(PG_APP_ID)
+    owners_sheet = app_file.worksheet("Owners")
 
-# ---------- LOAD ----------
-@st.cache_data(ttl=5)
-def load():
-    pg = pd.DataFrame(pg_sheet.get_all_records())
-    owners = pd.DataFrame(owners_sheet.get_all_records())
-    return pg, owners
+    owners_df = pd.DataFrame(owners_sheet.get_all_records())
 
-pg_df, owners_df = load()
+    return pg_df, owners_df, owners_sheet
 
-# ---------- LOGIN ----------
-st.subheader("Login")
 
-role = st.selectbox("Role", ["Admin", "Owner"])
+pg_df, owners_df, owners_sheet = load_data()
 
-username = st.text_input("Username")
+st.title("🏠 PG Management System")
+
+# -------------------------------
+# ADMIN DASHBOARD
+# -------------------------------
+st.subheader("👨‍💼 Admin Dashboard")
+
+st.markdown("### ➕ Create Owner")
+
+username = st.text_input("Login Username")
 password = st.text_input("Password", type="password")
 
-if st.button("Login"):
+# ✅ CLEAN DROPDOWN (NO EMPTY VALUES)
+pg_df = pg_df.dropna(subset=["pg_name"])
+pg_names = pg_df["pg_name"].astype(str).tolist()
 
-    if role == "Admin":
-        if username == "admin" and password == "admin123":
-            st.success("Admin Login ✅")
-        else:
-            st.error("Wrong Admin")
+selected_pg = st.selectbox("Select PG", pg_names)
+
+# -------------------------------
+# CREATE OWNER
+# -------------------------------
+if st.button("Create Owner"):
+    if username and password and selected_pg:
+
+        # GET PG ID
+        pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
+
+        owners_sheet.append_row([
+            username,
+            password,
+            pg_id,
+            selected_pg
+        ])
+
+        st.success("✅ Owner Created Successfully")
+        st.cache_data.clear()
+        st.rerun()
 
     else:
-        user = owners_df[
-            (owners_df["username"].astype(str).str.strip() == username.strip()) &
-            (owners_df["password"].astype(str).str.strip() == password.strip())
-        ]
+        st.error("❌ All fields required")
 
-        if not user.empty:
-            st.success("Owner Login ✅")
-            st.write("PG ID:", user.iloc[0]["pg_id"])
-        else:
-            st.error("Invalid Owner")
+# -------------------------------
+# OWNERS LIST
+# -------------------------------
+st.subheader("📋 Owners List")
+
+if not owners_df.empty:
+    st.dataframe(owners_df)
+else:
+    st.info("No owners found")
