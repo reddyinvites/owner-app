@@ -3,107 +3,87 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# -------------------------------
-# LOAD & FIX SECRETS
-# -------------------------------
-try:
-    creds_dict = dict(st.secrets["gcp"])   # ✅ your key
-except:
-    st.error("❌ gcp secrets missing")
-    st.stop()
-
-# 🔥 ADD MISSING FIELDS (IMPORTANT FIX)
-creds_dict["token_uri"] = "https://oauth2.googleapis.com/token"
-creds_dict["auth_uri"] = "https://accounts.google.com/o/oauth2/auth"
-
-# -------------------------------
-# CONNECT GOOGLE SHEETS
-# -------------------------------
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-
-creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-client = gspread.authorize(creds)
-
-# -------------------------------
-# FILE IDS
-# -------------------------------
+# -----------------------
+# CONFIG
+# -----------------------
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-# -------------------------------
+# -----------------------
+# AUTH
+# -----------------------
+scope = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=scope
+)
+
+client = gspread.authorize(creds)
+
+# -----------------------
 # LOAD DATA
-# -------------------------------
+# -----------------------
 @st.cache_data
 def load_data():
-    # PG DATA FILE
+    # ✅ FILE 1 → pg_data
     pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("pg_data")
+    pg_sheet = pg_file.worksheet("Sheet1")   # ✅ correct
     pg_df = pd.DataFrame(pg_sheet.get_all_records())
 
-    # APP FILE
+    # ✅ FILE 2 → pg_availability
     app_file = client.open_by_key(PG_APP_ID)
+
     owners_sheet = app_file.worksheet("Owners")
+    rooms_sheet = app_file.worksheet("rooms")
+    bookings_sheet = app_file.worksheet("Bookings")
+
     owners_df = pd.DataFrame(owners_sheet.get_all_records())
 
     return pg_df, owners_df, owners_sheet
 
-
 pg_df, owners_df, owners_sheet = load_data()
 
-# -------------------------------
+# -----------------------
 # UI
-# -------------------------------
+# -----------------------
 st.title("🏠 PG Management System")
 
-st.subheader("👨‍💼 Admin Dashboard")
+st.success("✅ Connected Successfully")
 
-# -------------------------------
-# CREATE OWNER
-# -------------------------------
-st.markdown("### ➕ Create Owner")
-
-username = st.text_input("Login Username")
-password = st.text_input("Password", type="password")
-
-# CLEAN DROPDOWN
-pg_df = pg_df.dropna(subset=["pg_name"])
-pg_df["pg_name"] = pg_df["pg_name"].astype(str)
-
-pg_names = pg_df["pg_name"].unique().tolist()
+# -----------------------
+# DROPDOWN (PG LIST)
+# -----------------------
+pg_names = pg_df["pg_name"].dropna().unique().tolist()
 
 selected_pg = st.selectbox("Select PG", pg_names)
 
-# -------------------------------
-# SAVE OWNER
-# -------------------------------
+# -----------------------
+# CREATE OWNER
+# -----------------------
+st.subheader("➕ Create Owner")
+
+username = st.text_input("Username")
+password = st.text_input("Password")
+
 if st.button("Create Owner"):
     if username and password and selected_pg:
 
         pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-        owners_sheet.append_row([
-            username,
-            password,
-            pg_id,
-            selected_pg
-        ])
+        owners_sheet.append_row([username, password, pg_id, selected_pg])
 
-        st.success("✅ Owner Created Successfully")
+        st.success("Owner Created ✅")
         st.cache_data.clear()
-        st.rerun()
 
     else:
-        st.error("❌ All fields required")
+        st.error("All fields required")
 
-# -------------------------------
-# OWNERS LIST
-# -------------------------------
+# -----------------------
+# SHOW OWNERS
+# -----------------------
 st.subheader("📋 Owners List")
-
-if not owners_df.empty:
-    st.dataframe(owners_df)
-else:
-    st.info("No owners available")
+st.dataframe(owners_df)
