@@ -17,16 +17,15 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
 
 client = gspread.authorize(creds)
 
-# ---------- FILE IDs ----------
-PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"   # pg_data
-PG_APP_ID = "👉 PUT pg_availability ID HERE"  # NEW FILE
+# ---------- ONE FILE ----------
+FILE_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-# ---------- CONNECT ----------
-pg_file = client.open_by_key(PG_DATA_ID)
-pg_sheet = pg_file.worksheet("Sheet1")
+file = client.open_by_key(FILE_ID)
 
-app_file = client.open_by_key(PG_APP_ID)
-owners_sheet = app_file.worksheet("Owners")
+# ✅ ALL SHEETS FROM SAME FILE
+pg_sheet = file.worksheet("Sheet1")   # PG DATA
+owners_sheet = file.worksheet("Owners")  # Owners
+rooms_sheet = file.worksheet("rooms")  # Rooms
 
 # ---------- LOAD ----------
 @st.cache_data(ttl=5)
@@ -42,25 +41,25 @@ st.subheader("Login")
 
 role = st.selectbox("Role", ["Admin", "Owner"])
 
-user = st.text_input("Username")
-pwd = st.text_input("Password", type="password")
+username = st.text_input("Username")
+password = st.text_input("Password", type="password")
 
 if st.button("Login"):
 
     if role == "Admin":
-        if user == "admin" and pwd == "admin123":
-            st.success("Admin Login Success")
+        if username == "admin" and password == "admin123":
+            st.success("Admin Login ✅")
         else:
             st.error("Wrong Admin")
 
     else:
-        u = owners_df[
-            (owners_df["username"] == user) &
-            (owners_df["password"] == pwd)
+        user = owners_df[
+            (owners_df["username"].astype(str).str.strip() == username.strip()) &
+            (owners_df["password"].astype(str).str.strip() == password.strip())
         ]
 
-        if not u.empty:
-            st.success("Owner Login Success")
-            st.write("PG ID:", u.iloc[0]["pg_id"])
+        if not user.empty:
+            st.success("Owner Login ✅")
+            st.write("PG ID:", user.iloc[0]["pg_id"])
         else:
             st.error("Invalid Owner")
