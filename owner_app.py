@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
 
 # -----------------------
 # CONFIG
 # -----------------------
+PG_DATA_ID = "YOUR_PG_DATA_ID"
 PG_APP_ID = "YOUR_APP_ID"
 
 ADMIN_USER = "admin"
@@ -56,23 +56,23 @@ if not st.session_state.logged_in:
 # -----------------------
 @st.cache_data
 def load_data():
-    file = client.open_by_key(PG_APP_ID)
+    pg_file = client.open_by_key(PG_DATA_ID)
+    pg_sheet = pg_file.worksheet("Sheet1")
+    pg_df = pd.DataFrame(pg_sheet.get_all_records())
 
-    owners_sheet = file.worksheet("Owners")
-    rooms_sheet = file.worksheet("rooms")
-
+    app_file = client.open_by_key(PG_APP_ID)
+    owners_sheet = app_file.worksheet("Owners")
     owners_df = pd.DataFrame(owners_sheet.get_all_records())
-    rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
 
-    return owners_df, rooms_df, owners_sheet, rooms_sheet
+    return pg_df, pg_sheet, owners_df, owners_sheet
 
-owners_df, rooms_df, owners_sheet, rooms_sheet = load_data()
+pg_df, pg_sheet, owners_df, owners_sheet = load_data()
 
 # -----------------------
 # HEADER
 # -----------------------
-st.title("🏠 Admin Dashboard")
-st.success("✅ Logged In")
+st.title("🏠 PG Management System")
+st.success("✅ Admin Logged In")
 
 if st.button("Logout"):
     st.session_state.logged_in = False
@@ -81,75 +81,80 @@ if st.button("Logout"):
 # -----------------------
 # ADD PG
 # -----------------------
-st.subheader("➕ Add PG")
+st.subheader("➕ Add New PG")
 
 pg_name = st.text_input("PG Name")
+location = st.text_input("Location")
+owner_name = st.text_input("Owner Name")
+owner_number = st.text_input("Owner Phone")
 
 if st.button("Add PG"):
-    if pg_name:
-        new_id = f"PG{len(owners_df)+1:03}"
+    if pg_name and location:
+        new_id = f"PG{len(pg_df)+1:03}"
 
-        owners_sheet.append_row(["", "", new_id, pg_name])
+        pg_sheet.append_row([
+            new_id,
+            pg_name,
+            location,
+            owner_name,
+            owner_number,
+            "[]"
+        ])
 
         st.success("PG Added ✅")
         st.cache_data.clear()
         st.rerun()
     else:
-        st.error("Enter PG name")
+        st.error("Fill required fields")
+
+# -----------------------
+# PG TABLE
+# -----------------------
+st.subheader("📋 PG List")
+st.dataframe(pg_df)
 
 # -----------------------
 # DELETE PG
 # -----------------------
 st.subheader("🗑 Delete PG")
 
-pg_list = owners_df["pg_name"].dropna().tolist()
+pg_list = pg_df["pg_name"].tolist()
 
-selected_pg = st.selectbox("Select PG", pg_list)
+selected_pg = st.selectbox("Select PG to Delete", pg_list)
 
 if st.button("Delete PG"):
-    row_index = owners_df[owners_df["pg_name"] == selected_pg].index[0] + 2
-    owners_sheet.delete_rows(row_index)
+    row_index = pg_df[pg_df["pg_name"] == selected_pg].index[0] + 2
+    pg_sheet.delete_rows(row_index)
 
-    st.success("Deleted ✅")
+    st.success("PG Deleted ✅")
     st.cache_data.clear()
     st.rerun()
 
 # -----------------------
-# ADD ROOM
+# CREATE OWNER
 # -----------------------
-st.subheader("🛏 Add Room")
+st.subheader("➕ Create Owner")
 
-pg_list = owners_df["pg_name"].dropna().tolist()
-selected_pg = st.selectbox("Select PG for Room", pg_list)
+pg_names = pg_df["pg_name"].tolist()
+selected_pg = st.selectbox("Select PG", pg_names)
 
-room_no = st.text_input("Room No")
-floor = st.text_input("Floor")
-sharing = st.text_input("Sharing")
-beds = st.number_input("Available Beds", 0)
+username = st.text_input("Username")
+password = st.text_input("Password")
 
-if st.button("Add Room"):
-    if selected_pg and room_no:
-        pg_id = owners_df[owners_df["pg_name"] == selected_pg]["pg_id"].values[0]
+if st.button("Create Owner"):
+    if username and password:
+        pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-        rooms_sheet.append_row([
-            pg_id,
-            selected_pg,
-            room_no,
-            floor,
-            sharing,
-            beds,
-            datetime.now().strftime("%Y-%m-%d %H:%M")
-        ])
+        owners_sheet.append_row([username, password, pg_id, selected_pg])
 
-        st.success("Room Added ✅")
+        st.success("Owner Created ✅")
         st.cache_data.clear()
         st.rerun()
+    else:
+        st.error("Fill all fields")
 
 # -----------------------
-# TABLES
+# OWNERS LIST
 # -----------------------
-st.subheader("📋 Owners")
+st.subheader("📋 Owners List")
 st.dataframe(owners_df)
-
-st.subheader("📋 Rooms")
-st.dataframe(rooms_df)
