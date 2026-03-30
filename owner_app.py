@@ -25,7 +25,7 @@ creds = Credentials.from_service_account_info(
 client = gspread.authorize(creds)
 
 # -----------------------
-# LOAD DATA (NO CACHE ISSUE)
+# LOAD DATA
 # -----------------------
 def load_data():
     pg_file = client.open_by_key(PG_DATA_ID)
@@ -34,7 +34,6 @@ def load_data():
 
     app_file = client.open_by_key(PG_APP_ID)
     owners_sheet = app_file.worksheet("Owners")
-
     owners_df = pd.DataFrame(owners_sheet.get_all_records())
 
     return pg_df, owners_df, owners_sheet
@@ -53,12 +52,11 @@ st.success("Connected Successfully ✅")
 pg_names = pg_df["pg_name"].dropna().unique().tolist()
 selected_pg = st.selectbox("Select PG", pg_names)
 
-# SAFE PG ID FETCH
 pg_id = None
 if selected_pg:
-    pg_row = pg_df[pg_df["pg_name"] == selected_pg]
-    if not pg_row.empty:
-        pg_id = pg_row.iloc[0]["pg_id"]
+    row = pg_df[pg_df["pg_name"] == selected_pg]
+    if not row.empty:
+        pg_id = row.iloc[0]["pg_id"]
 
 # -----------------------
 # CREATE OWNER
@@ -72,15 +70,29 @@ if st.button("Create Owner"):
 
     if username and password and pg_id:
 
-        owners_sheet.append_row([
-            username,
-            password,
-            pg_id,
-            selected_pg
-        ])
+        # ❗ Duplicate check
+        if not owners_df.empty and username in owners_df["username"].values:
+            st.error("Username already exists ❌")
 
-        st.success("Owner Created ✅")
-        st.rerun()
+        else:
+            try:
+                new_row = [
+                    str(username),
+                    str(password),
+                    str(pg_id),
+                    str(selected_pg)
+                ]
+
+                owners_sheet.append_row(
+                    new_row,
+                    value_input_option="USER_ENTERED"
+                )
+
+                st.success("Owner Created ✅")
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
 
     else:
         st.error("Fill all fields")
@@ -112,6 +124,7 @@ if not owners_df.empty:
                 owners_sheet.delete_rows(cell.row)
                 st.success("Deleted Successfully ✅")
                 st.rerun()
+
         except:
             st.error("User not found")
 
