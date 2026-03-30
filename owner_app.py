@@ -23,16 +23,35 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
 sheet = client.open_by_key(SHEET_ID)
 
-# ✅ IMPORTANT: Correct sheet names
-pg_sheet = sheet.worksheet("Sheet1")   # PG DATA
-owner_sheet = sheet.worksheet("Owners")  # OWNERS
+# -------- SAFE SHEET LOADING (FIX ERROR) --------
+pg_sheet = None
+owner_sheet = None
+
+for ws in sheet.worksheets():
+    name = ws.title.strip().lower()
+
+    if name == "sheet1":
+        pg_sheet = ws
+
+    if name == "owners":
+        owner_sheet = ws
+
+if pg_sheet is None:
+    st.error("❌ Sheet1 not found")
+    st.write([ws.title for ws in sheet.worksheets()])
+    st.stop()
+
+if owner_sheet is None:
+    st.error("❌ Owners sheet not found")
+    st.stop()
+
+st.success("✅ Connected to Google Sheets")
 
 # -------- LOAD DATA --------
 def load_data():
     pg_df = pd.DataFrame(pg_sheet.get_all_records())
     owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
-    # CLEAN COLUMN NAMES
     if not pg_df.empty:
         pg_df.columns = pg_df.columns.astype(str).str.strip().str.lower()
 
@@ -43,9 +62,7 @@ def load_data():
 
 pg_df, owner_df = load_data()
 
-st.success("✅ Connected to Google Sheets")
-
-# -------- CLEAN PG DATA --------
+# -------- CLEAN PG LIST --------
 pg_list = []
 
 if not pg_df.empty and "pg_name" in pg_df.columns:
@@ -55,7 +72,7 @@ if not pg_df.empty and "pg_name" in pg_df.columns:
 
     pg_list = pg_df["pg_name"].astype(str).str.strip().tolist()
 
-# -------- ADMIN LOGIN --------
+# -------- LOGIN --------
 if "login" not in st.session_state:
     st.session_state.login = False
 
@@ -82,10 +99,10 @@ st.subheader("➕ Create Owner")
 username = st.text_input("Login Username")
 password = st.text_input("Password", type="password")
 
-# ✅ CLEAN DROPDOWN
+# -------- DROPDOWN --------
 selected_pg = st.selectbox("Select PG", pg_list)
 
-# GET PG ID FROM NAME
+# -------- GET PG ID --------
 pg_id = ""
 
 if selected_pg:
@@ -93,13 +110,14 @@ if selected_pg:
     if not row.empty:
         pg_id = row.iloc[0]["pg_id"]
 
+# -------- CREATE OWNER --------
 if st.button("Create Owner"):
 
     if username.strip() == "" or password.strip() == "" or selected_pg == "":
         st.error("All fields required")
 
     else:
-        # CHECK DUPLICATE USER
+        # DUPLICATE CHECK
         if not owner_df.empty:
             users = owner_df["username"].astype(str).str.strip().tolist()
             if username.strip() in users:
