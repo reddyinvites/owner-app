@@ -4,11 +4,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-st.set_page_config(page_title="PG System", layout="centered")
+st.set_page_config(page_title="PG Management System", layout="centered")
 
 st.title("🏠 PG Management System")
 
-# -------- GOOGLE SHEETS --------
+# -------- GOOGLE SHEETS SAFE CONNECT --------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -22,10 +22,26 @@ client = gspread.authorize(creds)
 
 SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-sheet = client.open_by_key(SHEET_ID)
+try:
+    # ✅ USE URL (FIXED)
+    sheet = client.open_by_url(
+        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+    )
 
-room_sheet = sheet.worksheet("Sheet1")     # ROOMS
-owner_sheet = sheet.worksheet("Owners")    # OWNERS
+    # ✅ GET SHEET NAMES
+    sheet_names = [ws.title for ws in sheet.worksheets()]
+    st.write("Sheets:", sheet_names)
+
+    # ✅ SAFE LOAD
+    room_sheet = sheet.worksheet("Sheet1") if "Sheet1" in sheet_names else sheet.worksheets()[0]
+    owner_sheet = sheet.worksheet("Owners")
+
+    st.success("✅ Connected to Google Sheet")
+
+except Exception as e:
+    st.error("❌ Connection Failed")
+    st.write(e)
+    st.stop()
 
 # -------- LOAD DATA --------
 @st.cache_data(ttl=30)
@@ -35,6 +51,11 @@ def load_data():
     return room_df, owner_df
 
 room_df, owner_df = load_data()
+
+# -------- REFRESH --------
+if st.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
 
 # -------- SESSION --------
 if "page" not in st.session_state:
@@ -46,12 +67,13 @@ if st.session_state.page == "login":
     st.subheader("🔐 Login")
 
     role = st.selectbox("Login as", ["Owner", "Admin"])
+
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
+        # ADMIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -59,7 +81,7 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
-        # OWNER LOGIN
+        # OWNER
         else:
             if not owner_df.empty:
                 owner_df.columns = owner_df.columns.str.strip()
@@ -72,10 +94,10 @@ if st.session_state.page == "login":
                 if not user.empty:
                     st.session_state.page = "owner"
                     st.session_state.owner = username.strip()
-                    st.session_state.pg_id = user.iloc[0]["pg_id"]   # ✅ FIXED
+                    st.session_state.pg_id = str(user.iloc[0]["pg_id"])   # ✅ pg_id
                     st.rerun()
                 else:
-                    st.error("Invalid login")
+                    st.error("Invalid owner login")
 
 # ================= ADMIN =================
 elif st.session_state.page == "admin":
@@ -146,7 +168,6 @@ elif st.session_state.page == "owner":
     total_beds = st.number_input("Total Beds", min_value=1, step=1)
     beds = st.number_input("Available Beds", min_value=0, step=1)
 
-    # VALIDATION
     if beds > total_beds:
         st.warning("⚠️ Available beds cannot exceed total beds")
 
@@ -188,9 +209,9 @@ elif st.session_state.page == "owner":
     st.subheader("🗑 Delete Room")
 
     if not my_df.empty:
-        selected = st.selectbox("Select Room Row", my_df.index)
+        selected = st.selectbox("Select Row", my_df.index)
 
-        if st.button("Delete Selected Room"):
+        if st.button("Delete Selected"):
             room_sheet.delete_rows(selected + 2)
             st.success("Deleted")
             st.cache_data.clear()
