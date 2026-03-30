@@ -24,14 +24,17 @@ SHEET_ID = "YOUR_SHEET_ID_HERE"
 
 try:
     sheet = client.open_by_key(SHEET_ID)
-    room_sheet = sheet.worksheet("Sheet1")
-    owner_sheet = sheet.worksheet("Owners")
+
+    room_sheet = sheet.worksheet("Sheet1")   # ✅ correct
+    owner_sheet = sheet.worksheet("Owners")  # ✅ correct
+
     st.success("✅ Connected to Google Sheet")
+
 except Exception as e:
     st.error(f"❌ ERROR: {e}")
     st.stop()
 
-# ---------------- LOAD ----------------
+# ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=30)
 def load_data():
     room_df = pd.DataFrame(room_sheet.get_all_records())
@@ -128,13 +131,18 @@ elif st.session_state.page == "owner":
     st.header("🏠 Owner Dashboard")
 
     pg_id = st.session_state.pg_id
-
     st.success(f"PG ID: {pg_id}")
 
-    # FILTER DATA
+    # -------- CLEAN COLUMNS --------
     if not room_df.empty:
         room_df.columns = room_df.columns.str.strip().str.lower()
-        my_df = room_df[room_df["pg_id"].astype(str) == pg_id]
+
+        # ensure required columns exist
+        for col in ["pg_id","room_no","floor","sharing","available_beds"]:
+            if col not in room_df.columns:
+                room_df[col] = ""
+
+        my_df = room_df[room_df["pg_id"].astype(str) == str(pg_id)]
     else:
         my_df = pd.DataFrame()
 
@@ -160,7 +168,7 @@ elif st.session_state.page == "owner":
         else:
             room_sheet.append_row([
                 pg_id,
-                "", "", "", "",   # pg details optional
+                "", "", "", "",   # optional columns
                 room,
                 floor,
                 sharing,
@@ -169,24 +177,22 @@ elif st.session_state.page == "owner":
             ])
 
             st.success("Room added ✅")
-
-            # 🔥 CLEAR INPUTS
+            st.cache_data.clear()
             st.rerun()
 
     # -------- DISPLAY --------
     st.subheader("📊 My Rooms")
 
     if not my_df.empty:
-        st.dataframe(my_df[[
-            "pg_id","room_no","floor","sharing","available_beds"
-        ]], use_container_width=True)
+        cols = [c for c in ["pg_id","room_no","floor","sharing","available_beds"] if c in my_df.columns]
+        st.dataframe(my_df[cols], use_container_width=True)
     else:
         st.info("No rooms added")
 
     # -------- ACTIONS --------
-    st.subheader("⚙️ Actions")
-
     if not my_df.empty:
+
+        st.subheader("⚙️ Actions")
 
         selected = st.selectbox("Select Room", my_df.index)
 
@@ -194,7 +200,7 @@ elif st.session_state.page == "owner":
 
         if col1.button("🗑 Delete"):
             room_sheet.delete_rows(selected + 2)
-            st.success("Deleted")
+            st.cache_data.clear()
             st.rerun()
 
         if col2.button("✏️ Edit"):
@@ -208,10 +214,10 @@ elif st.session_state.page == "owner":
 
         st.subheader("✏️ Edit Room")
 
-        new_room = st.text_input("Room", value=row["room_no"])
-        new_floor = st.number_input("Floor", value=int(row["floor"]))
-        new_sharing = st.number_input("Sharing", value=int(row["sharing"]))
-        new_beds = st.number_input("Beds", value=int(row["available_beds"]))
+        new_room = st.text_input("Room", value=row.get("room_no",""))
+        new_floor = st.number_input("Floor", value=int(row.get("floor",1)))
+        new_sharing = st.number_input("Sharing", value=int(row.get("sharing",1)))
+        new_beds = st.number_input("Beds", value=int(row.get("available_beds",0)))
 
         if st.button("Update"):
 
@@ -226,13 +232,14 @@ elif st.session_state.page == "owner":
                     new_floor,
                     new_sharing,
                     new_beds,
-                    row["timestamp"]
+                    row.get("timestamp","")
                 ]
 
                 room_sheet.update(f"A{i+2}:J{i+2}", [updated])
 
                 st.success("Updated ✅")
                 del st.session_state.edit_index
+                st.cache_data.clear()
                 st.rerun()
 
     if st.button("Logout"):
