@@ -7,7 +7,7 @@ from google.oauth2.service_account import Credentials
 # SAFE SECRETS LOAD (NO ERROR)
 # -------------------------------
 try:
-    creds_dict = st.secrets["gcp_service_account"]
+    creds_dict = st.secrets["gcp"]
 except KeyError:
     st.error("❌ gcp_service_account missing in secrets")
     st.stop()
