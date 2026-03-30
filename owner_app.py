@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from datetime import datetime
 
 # -----------------------
 # CONFIG
 # -----------------------
-PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
-PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
+PG_APP_ID = "YOUR_APP_ID"
+
+ADMIN_USER = "admin"
+ADMIN_PASS = "1234"
 
 # -----------------------
 # AUTH
@@ -25,65 +28,128 @@ creds = Credentials.from_service_account_info(
 client = gspread.authorize(creds)
 
 # -----------------------
+# SESSION
+# -----------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+# -----------------------
+# LOGIN
+# -----------------------
+if not st.session_state.logged_in:
+    st.title("🔐 Admin Login")
+
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if user == ADMIN_USER and pwd == ADMIN_PASS:
+            st.session_state.logged_in = True
+            st.rerun()
+        else:
+            st.error("Wrong credentials")
+
+    st.stop()
+
+# -----------------------
 # LOAD DATA
 # -----------------------
 @st.cache_data
 def load_data():
-    # ✅ FILE 1 → pg_data
-    pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("Sheet1")   # ✅ correct
-    pg_df = pd.DataFrame(pg_sheet.get_all_records())
+    file = client.open_by_key(PG_APP_ID)
 
-    # ✅ FILE 2 → pg_availability
-    app_file = client.open_by_key(PG_APP_ID)
-
-    owners_sheet = app_file.worksheet("Owners")
-    rooms_sheet = app_file.worksheet("rooms")
-    bookings_sheet = app_file.worksheet("Bookings")
+    owners_sheet = file.worksheet("Owners")
+    rooms_sheet = file.worksheet("rooms")
 
     owners_df = pd.DataFrame(owners_sheet.get_all_records())
+    rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
 
-    return pg_df, owners_df, owners_sheet
+    return owners_df, rooms_df, owners_sheet, rooms_sheet
 
-pg_df, owners_df, owners_sheet = load_data()
-
-# -----------------------
-# UI
-# -----------------------
-st.title("🏠 PG Management System")
-
-st.success("✅ Connected Successfully")
+owners_df, rooms_df, owners_sheet, rooms_sheet = load_data()
 
 # -----------------------
-# DROPDOWN (PG LIST)
+# HEADER
 # -----------------------
-pg_names = pg_df["pg_name"].dropna().unique().tolist()
+st.title("🏠 Admin Dashboard")
+st.success("✅ Logged In")
 
-selected_pg = st.selectbox("Select PG", pg_names)
+if st.button("Logout"):
+    st.session_state.logged_in = False
+    st.rerun()
 
 # -----------------------
-# CREATE OWNER
+# ADD PG
 # -----------------------
-st.subheader("➕ Create Owner")
+st.subheader("➕ Add PG")
 
-username = st.text_input("Username")
-password = st.text_input("Password")
+pg_name = st.text_input("PG Name")
 
-if st.button("Create Owner"):
-    if username and password and selected_pg:
+if st.button("Add PG"):
+    if pg_name:
+        new_id = f"PG{len(owners_df)+1:03}"
 
-        pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
+        owners_sheet.append_row(["", "", new_id, pg_name])
 
-        owners_sheet.append_row([username, password, pg_id, selected_pg])
-
-        st.success("Owner Created ✅")
+        st.success("PG Added ✅")
         st.cache_data.clear()
-
+        st.rerun()
     else:
-        st.error("All fields required")
+        st.error("Enter PG name")
 
 # -----------------------
-# SHOW OWNERS
+# DELETE PG
 # -----------------------
-st.subheader("📋 Owners List")
+st.subheader("🗑 Delete PG")
+
+pg_list = owners_df["pg_name"].dropna().tolist()
+
+selected_pg = st.selectbox("Select PG", pg_list)
+
+if st.button("Delete PG"):
+    row_index = owners_df[owners_df["pg_name"] == selected_pg].index[0] + 2
+    owners_sheet.delete_rows(row_index)
+
+    st.success("Deleted ✅")
+    st.cache_data.clear()
+    st.rerun()
+
+# -----------------------
+# ADD ROOM
+# -----------------------
+st.subheader("🛏 Add Room")
+
+pg_list = owners_df["pg_name"].dropna().tolist()
+selected_pg = st.selectbox("Select PG for Room", pg_list)
+
+room_no = st.text_input("Room No")
+floor = st.text_input("Floor")
+sharing = st.text_input("Sharing")
+beds = st.number_input("Available Beds", 0)
+
+if st.button("Add Room"):
+    if selected_pg and room_no:
+        pg_id = owners_df[owners_df["pg_name"] == selected_pg]["pg_id"].values[0]
+
+        rooms_sheet.append_row([
+            pg_id,
+            selected_pg,
+            room_no,
+            floor,
+            sharing,
+            beds,
+            datetime.now().strftime("%Y-%m-%d %H:%M")
+        ])
+
+        st.success("Room Added ✅")
+        st.cache_data.clear()
+        st.rerun()
+
+# -----------------------
+# TABLES
+# -----------------------
+st.subheader("📋 Owners")
 st.dataframe(owners_df)
+
+st.subheader("📋 Rooms")
+st.dataframe(rooms_df)
