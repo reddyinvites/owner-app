@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
 
 st.set_page_config(page_title="PG Management System")
 
@@ -20,20 +19,22 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
 
 client = gspread.authorize(creds)
 
-# ---------- FILE IDs ----------
+# ---------- FILE ID ----------
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
-# ---------- CONNECT ----------
-try:
-    pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("Sheet1")
-    st.success("✅ PG DATA Connected")
+file = client.open_by_key(PG_DATA_ID)
 
-    pg_df = pd.DataFrame(pg_sheet.get_all_records())
+pg_sheet = file.worksheet("Sheet1")   # PG DATA
+owners_sheet = file.worksheet("Owners")  # OWNERS
 
-except:
-    st.error("❌ PG DATA Connection Failed")
-    st.stop()
+# ---------- LOAD DATA ----------
+@st.cache_data(ttl=5)
+def load():
+    pg = pd.DataFrame(pg_sheet.get_all_records())
+    owners = pd.DataFrame(owners_sheet.get_all_records())
+    return pg, owners
+
+pg_df, owners_df = load()
 
 # ---------- SESSION ----------
 if "page" not in st.session_state:
@@ -51,7 +52,6 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -59,59 +59,58 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid Admin Login")
 
-        # OWNER LOGIN (use pg_name as username)
         else:
-            if not pg_df.empty:
-                user = pg_df[
-                    pg_df["pg_name"].astype(str).str.strip() == username.strip()
+            if not owners_df.empty:
+                user = owners_df[
+                    (owners_df["username"].astype(str).str.strip() == username.strip()) &
+                    (owners_df["password"].astype(str).str.strip() == password.strip())
                 ]
 
                 if not user.empty:
                     st.session_state.page = "owner"
                     st.session_state.pg_id = user.iloc[0]["pg_id"]
-                    st.session_state.pg_name = user.iloc[0]["pg_name"]
                     st.rerun()
                 else:
-                    st.error("Owner not found")
+                    st.error("Invalid Owner Login")
 
 # ================= ADMIN =================
 elif st.session_state.page == "admin":
 
     st.header("🧑‍💼 Admin Dashboard")
 
-    st.subheader("📊 PG List")
+    st.subheader("➕ Create Owner")
 
+    new_user = st.text_input("Username")
+    new_pass = st.text_input("Password", type="password")
+
+    # PG DROPDOWN
     if not pg_df.empty:
-        st.dataframe(pg_df)
+        pg_options = pg_df["pg_name"].dropna().tolist()
     else:
-        st.info("No PG data")
+        pg_options = []
 
-    # ADD NEW PG
-    st.subheader("➕ Add PG")
+    selected_pg = st.selectbox("Select PG", pg_options)
 
-    pg_name = st.text_input("PG Name")
-    location = st.text_input("Location")
-    owner_name = st.text_input("Owner Name")
-    owner_number = st.text_input("Owner Number")
+    if st.button("Create Owner"):
 
-    if st.button("Add PG"):
+        if new_user == "" or new_pass == "":
+            st.error("All fields required")
 
-        if pg_name == "" or location == "":
-            st.error("Fill all fields")
         else:
-            new_id = "PG" + str(len(pg_df) + 1).zfill(3)
+            # GET PG ID FROM NAME
+            pg_id = pg_df[pg_df["pg_name"] == selected_pg].iloc[0]["pg_id"]
 
-            pg_sheet.append_row([
-                new_id,
-                pg_name,
-                location,
-                owner_name,
-                owner_number,
-                ""
-            ])
+            owners_sheet.append_row([new_user, new_pass, pg_id])
 
-            st.success("PG Added ✅")
+            st.success("Owner Created ✅")
+            st.cache_data.clear()
             st.rerun()
+
+    # SHOW OWNERS
+    st.subheader("📋 Owners List")
+
+    if not owners_df.empty:
+        st.dataframe(owners_df)
 
     if st.button("🚪 Logout"):
         st.session_state.page = "login"
@@ -123,26 +122,11 @@ elif st.session_state.page == "owner":
     st.header("🏠 Owner Dashboard")
 
     st.info(f"PG ID: {st.session_state.pg_id}")
-    st.info(f"PG Name: {st.session_state.pg_name}")
 
-    # SHOW PG DETAILS
     my_pg = pg_df[pg_df["pg_id"] == st.session_state.pg_id]
 
     if not my_pg.empty:
         st.dataframe(my_pg)
-
-    st.subheader("🛏 Update Sharing JSON")
-
-    sharing = st.text_area("Sharing JSON")
-
-    if st.button("Update"):
-
-        index = pg_df[pg_df["pg_id"] == st.session_state.pg_id].index[0] + 2
-
-        pg_sheet.update_cell(index, 6, sharing)
-
-        st.success("Updated ✅")
-        st.rerun()
 
     if st.button("🚪 Logout"):
         st.session_state.page = "login"
