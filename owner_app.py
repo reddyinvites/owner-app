@@ -123,14 +123,18 @@ elif st.session_state.page == "owner":
             st.error("Invalid beds")
 
         else:
-            room_sheet.append_row([
-                pg_id,
-                room,
-                floor,
-                sharing,
-                beds,
-                datetime.now().strftime("%Y-%m-%d %H:%M")
-            ])
+            # get pg_name from owners sheet
+pg_name = owner_df[owner_df["pg_id"] == pg_id].iloc[0]["username"]
+
+room_sheet.append_row([
+    pg_id,
+    pg_name,
+    room,
+    floor,
+    sharing,
+    beds,
+    datetime.now().strftime("%Y-%m-%d %H:%M")
+])
 
             st.success("Room Added")
             st.rerun()
