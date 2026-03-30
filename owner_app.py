@@ -13,19 +13,23 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 
 # -----------------------
-# AUTH
+# AUTH (FIXED)
 # -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
+# FIX: Proper secrets handling
+creds_dict = dict(st.secrets["gcp_service_account"])
+
 creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
+    creds_dict,
     scopes=scope
 )
 
 client = gspread.authorize(creds)
+client.session.headers.update({"Connection": "keep-alive"})
 
 # -----------------------
 # LOAD DATA
@@ -129,11 +133,13 @@ if st.session_state.login and st.session_state.role == "admin":
             if not pg_row.empty:
                 pg_id = pg_row.iloc[0]["pg_id"]
 
-                owners_sheet.append_row([username, password, pg_id, selected_pg])
-
-                st.success("Owner Created ✅")
-                st.cache_data.clear()
-                st.rerun()
+                try:
+                    owners_sheet.append_row([username, password, pg_id, selected_pg])
+                    st.success("Owner Created ✅")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(e)
 
     # OWNER LIST
     st.subheader("📋 Owners List")
@@ -146,11 +152,14 @@ if st.session_state.login and st.session_state.role == "admin":
     selected_owner = st.selectbox("Select Owner", owner_list)
 
     if st.button("Delete Owner"):
-        cell = owners_sheet.find(selected_owner)
-        owners_sheet.delete_rows(cell.row)
-        st.success("Deleted ✅")
-        st.cache_data.clear()
-        st.rerun()
+        try:
+            cell = owners_sheet.find(selected_owner)
+            owners_sheet.delete_rows(cell.row)
+            st.success("Deleted ✅")
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(e)
 
 # -----------------------
 # OWNER DASHBOARD
@@ -193,8 +202,8 @@ if st.session_state.login and st.session_state.role == "owner":
                 room_no,
                 floor,
                 sharing,
-                total_beds,   # available_beds
-                total_beds,   # total_beds
+                total_beds,   # available beds
+                total_beds,   # total beds
                 pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
             ])
 
