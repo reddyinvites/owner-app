@@ -25,9 +25,9 @@ try:
     spreadsheet = client.open_by_key(SHEET_ID)
     room_sheet = spreadsheet.worksheet("Sheet1")
     owner_sheet = spreadsheet.worksheet("Owners")
-    st.success("✅ Connected")
+    st.success("✅ Connected to Google Sheet")
 except Exception as e:
-    st.error("❌ Sheet Connection Failed")
+    st.error("❌ Connection Error")
     st.write(e)
     st.stop()
 
@@ -40,7 +40,7 @@ def load_data():
 
 room_df, owner_df = load_data()
 
-# ---------------- GENERATE UNIQUE PG ID ----------------
+# ---------------- GENERATE PG ID ----------------
 def generate_pg_id():
     if owner_df.empty or "pg_id" not in owner_df.columns:
         return "PG001"
@@ -96,7 +96,6 @@ elif st.session_state.page == "admin":
 
     menu = st.radio("Menu", ["➕ Create Owner", "📋 Owners List"])
 
-    # -------- CREATE OWNER --------
     if menu == "➕ Create Owner":
 
         new_user = st.text_input("Username")
@@ -125,7 +124,6 @@ elif st.session_state.page == "admin":
                 st.cache_data.clear()
                 st.rerun()
 
-    # -------- OWNER LIST --------
     elif menu == "📋 Owners List":
 
         if not owner_df.empty:
@@ -168,4 +166,49 @@ elif st.session_state.page == "owner":
 
     room = st.text_input("Room No")
     floor = st.number_input("Floor", min_value=1, step=1)
-    sharing = st.selectbox("Sharing", [1,2,
+
+    # ✅ FIXED SHARING
+    sharing = st.selectbox("Sharing", [1, 2, 3, 4, 5])
+
+    beds = st.number_input("Available Beds", min_value=0, step=1)
+
+    if beds > sharing:
+        st.warning(f"⚠️ Max allowed = {sharing}")
+
+    if st.button("Save Room"):
+
+        if room.strip() == "":
+            st.error("Enter Room Number")
+
+        elif beds > sharing:
+            st.error("Beds cannot exceed sharing")
+
+        else:
+            room_sheet.append_row([
+                pg,
+                room,
+                floor,
+                sharing,
+                beds,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                owner
+            ])
+
+            st.success("🎉 Room Added Successfully")
+
+            st.cache_data.clear()
+            st.rerun()
+
+    # -------- DISPLAY --------
+    st.subheader("📊 My Rooms")
+
+    if not my_df.empty:
+        for f in my_df["floor"].unique():
+            st.markdown(f"### Floor {f}")
+            st.dataframe(my_df[my_df["floor"] == f])
+    else:
+        st.info("No rooms added")
+
+    if st.button("🚪 Logout"):
+        st.session_state.page = "login"
+        st.rerun()
