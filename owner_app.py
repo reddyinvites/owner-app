@@ -9,8 +9,37 @@ from google.oauth2.service_account import Credentials
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
+ADMIN_USER = "admin"
+ADMIN_PASS = "admin123"
+
 # -----------------------
-# AUTH
+# SESSION STATE
+# -----------------------
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
+
+# -----------------------
+# LOGIN PAGE
+# -----------------------
+if not st.session_state.admin_logged_in:
+
+    st.title("🔐 Admin Login")
+
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if user == ADMIN_USER and pwd == ADMIN_PASS:
+            st.session_state.admin_logged_in = True
+            st.success("Login Successful ✅")
+            st.rerun()
+        else:
+            st.error("Invalid Credentials ❌")
+
+    st.stop()
+
+# -----------------------
+# AUTH (after login)
 # -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -41,10 +70,15 @@ def load_data():
 pg_df, owners_df, owners_sheet = load_data()
 
 # -----------------------
-# UI
+# ADMIN DASHBOARD
 # -----------------------
-st.title("🏠 PG Management System")
+st.title("🏠 Admin Dashboard")
 st.success("Connected Successfully ✅")
+
+# Logout
+if st.button("Logout"):
+    st.session_state.admin_logged_in = False
+    st.rerun()
 
 # -----------------------
 # SELECT PG
@@ -70,29 +104,19 @@ if st.button("Create Owner"):
 
     if username and password and pg_id:
 
-        # ❗ Duplicate check
         if not owners_df.empty and username in owners_df["username"].values:
             st.error("Username already exists ❌")
 
         else:
-            try:
-                new_row = [
-                    str(username),
-                    str(password),
-                    str(pg_id),
-                    str(selected_pg)
-                ]
+            owners_sheet.append_row([
+                str(username),
+                str(password),
+                str(pg_id),
+                str(selected_pg)
+            ])
 
-                owners_sheet.append_row(
-                    new_row,
-                    value_input_option="USER_ENTERED"
-                )
-
-                st.success("Owner Created ✅")
-                st.rerun()
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+            st.success("Owner Created ✅")
+            st.rerun()
 
     else:
         st.error("Fill all fields")
