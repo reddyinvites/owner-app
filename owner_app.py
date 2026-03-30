@@ -6,11 +6,8 @@ from google.oauth2.service_account import Credentials
 # -----------------------
 # CONFIG
 # -----------------------
-PG_DATA_ID = "YOUR_PG_DATA_ID"
-PG_APP_ID = "YOUR_APP_ID"
-
-ADMIN_USER = "admin"
-ADMIN_PASS = "1234"
+PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
+PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
 # -----------------------
 # AUTH
@@ -28,133 +25,65 @@ creds = Credentials.from_service_account_info(
 client = gspread.authorize(creds)
 
 # -----------------------
-# SESSION
-# -----------------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-# -----------------------
-# LOGIN
-# -----------------------
-if not st.session_state.logged_in:
-    st.title("🔐 Admin Login")
-
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if user == ADMIN_USER and pwd == ADMIN_PASS:
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("Wrong credentials")
-
-    st.stop()
-
-# -----------------------
 # LOAD DATA
 # -----------------------
 @st.cache_data
 def load_data():
+    # ✅ FILE 1 → pg_data
     pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("Sheet1")
+    pg_sheet = pg_file.worksheet("Sheet1")   # ✅ correct
     pg_df = pd.DataFrame(pg_sheet.get_all_records())
 
+    # ✅ FILE 2 → pg_availability
     app_file = client.open_by_key(PG_APP_ID)
+
     owners_sheet = app_file.worksheet("Owners")
+    rooms_sheet = app_file.worksheet("rooms")
+    bookings_sheet = app_file.worksheet("Bookings")
+
     owners_df = pd.DataFrame(owners_sheet.get_all_records())
 
-    return pg_df, pg_sheet, owners_df, owners_sheet
+    return pg_df, owners_df, owners_sheet
 
-pg_df, pg_sheet, owners_df, owners_sheet = load_data()
+pg_df, owners_df, owners_sheet = load_data()
 
 # -----------------------
-# HEADER
+# UI
 # -----------------------
 st.title("🏠 PG Management System")
-st.success("✅ Admin Logged In")
 
-if st.button("Logout"):
-    st.session_state.logged_in = False
-    st.rerun()
+st.success("✅ Connected Successfully")
 
 # -----------------------
-# ADD PG
+# DROPDOWN (PG LIST)
 # -----------------------
-st.subheader("➕ Add New PG")
+pg_names = pg_df["pg_name"].dropna().unique().tolist()
 
-pg_name = st.text_input("PG Name")
-location = st.text_input("Location")
-owner_name = st.text_input("Owner Name")
-owner_number = st.text_input("Owner Phone")
-
-if st.button("Add PG"):
-    if pg_name and location:
-        new_id = f"PG{len(pg_df)+1:03}"
-
-        pg_sheet.append_row([
-            new_id,
-            pg_name,
-            location,
-            owner_name,
-            owner_number,
-            "[]"
-        ])
-
-        st.success("PG Added ✅")
-        st.cache_data.clear()
-        st.rerun()
-    else:
-        st.error("Fill required fields")
-
-# -----------------------
-# PG TABLE
-# -----------------------
-st.subheader("📋 PG List")
-st.dataframe(pg_df)
-
-# -----------------------
-# DELETE PG
-# -----------------------
-st.subheader("🗑 Delete PG")
-
-pg_list = pg_df["pg_name"].tolist()
-
-selected_pg = st.selectbox("Select PG to Delete", pg_list)
-
-if st.button("Delete PG"):
-    row_index = pg_df[pg_df["pg_name"] == selected_pg].index[0] + 2
-    pg_sheet.delete_rows(row_index)
-
-    st.success("PG Deleted ✅")
-    st.cache_data.clear()
-    st.rerun()
+selected_pg = st.selectbox("Select PG", pg_names)
 
 # -----------------------
 # CREATE OWNER
 # -----------------------
 st.subheader("➕ Create Owner")
 
-pg_names = pg_df["pg_name"].tolist()
-selected_pg = st.selectbox("Select PG", pg_names)
-
 username = st.text_input("Username")
 password = st.text_input("Password")
 
 if st.button("Create Owner"):
-    if username and password:
+    if username and password and selected_pg:
+
         pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
         owners_sheet.append_row([username, password, pg_id, selected_pg])
 
         st.success("Owner Created ✅")
         st.cache_data.clear()
-        st.rerun()
+
     else:
-        st.error("Fill all fields")
+        st.error("All fields required")
 
 # -----------------------
-# OWNERS LIST
+# SHOW OWNERS
 # -----------------------
 st.subheader("📋 Owners List")
 st.dataframe(owners_df)
