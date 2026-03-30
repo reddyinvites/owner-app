@@ -25,21 +25,15 @@ creds = Credentials.from_service_account_info(
 client = gspread.authorize(creds)
 
 # -----------------------
-# LOAD DATA
+# LOAD DATA (NO CACHE ISSUE)
 # -----------------------
-@st.cache_data
 def load_data():
-    # ✅ FILE 1 → pg_data
     pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("Sheet1")   # ✅ correct
+    pg_sheet = pg_file.worksheet("Sheet1")
     pg_df = pd.DataFrame(pg_sheet.get_all_records())
 
-    # ✅ FILE 2 → pg_availability
     app_file = client.open_by_key(PG_APP_ID)
-
     owners_sheet = app_file.worksheet("Owners")
-    rooms_sheet = app_file.worksheet("rooms")
-    bookings_sheet = app_file.worksheet("Bookings")
 
     owners_df = pd.DataFrame(owners_sheet.get_all_records())
 
@@ -51,15 +45,20 @@ pg_df, owners_df, owners_sheet = load_data()
 # UI
 # -----------------------
 st.title("🏠 PG Management System")
-
-st.success("✅ Connected Successfully")
+st.success("Connected Successfully ✅")
 
 # -----------------------
-# DROPDOWN (PG LIST)
+# SELECT PG
 # -----------------------
 pg_names = pg_df["pg_name"].dropna().unique().tolist()
-
 selected_pg = st.selectbox("Select PG", pg_names)
+
+# SAFE PG ID FETCH
+pg_id = None
+if selected_pg:
+    pg_row = pg_df[pg_df["pg_name"] == selected_pg]
+    if not pg_row.empty:
+        pg_id = pg_row.iloc[0]["pg_id"]
 
 # -----------------------
 # CREATE OWNER
@@ -70,20 +69,51 @@ username = st.text_input("Username")
 password = st.text_input("Password")
 
 if st.button("Create Owner"):
-    if username and password and selected_pg:
 
-        pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
+    if username and password and pg_id:
 
-        owners_sheet.append_row([username, password, pg_id, selected_pg])
+        owners_sheet.append_row([
+            username,
+            password,
+            pg_id,
+            selected_pg
+        ])
 
         st.success("Owner Created ✅")
-        st.cache_data.clear()
+        st.rerun()
 
     else:
-        st.error("All fields required")
+        st.error("Fill all fields")
 
 # -----------------------
-# SHOW OWNERS
+# OWNERS LIST
 # -----------------------
 st.subheader("📋 Owners List")
-st.dataframe(owners_df)
+
+if not owners_df.empty:
+    st.dataframe(owners_df)
+
+    # -----------------------
+    # DELETE OWNER
+    # -----------------------
+    st.subheader("❌ Delete Owner")
+
+    selected_user = st.selectbox(
+        "Select Owner",
+        owners_df["username"].tolist()
+    )
+
+    if st.button("Delete Owner"):
+
+        try:
+            cell = owners_sheet.find(selected_user)
+
+            if cell:
+                owners_sheet.delete_rows(cell.row)
+                st.success("Deleted Successfully ✅")
+                st.rerun()
+        except:
+            st.error("User not found")
+
+else:
+    st.info("No owners available")
