@@ -13,33 +13,73 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
 # -----------------------
-# SESSION STATE
+# SESSION
 # -----------------------
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
+if "role" not in st.session_state:
+    st.session_state.role = None
+
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 # -----------------------
-# LOGIN PAGE
+# LOGIN SELECT
 # -----------------------
-if not st.session_state.admin_logged_in:
+if st.session_state.role is None:
 
-    st.title("🔐 Admin Login")
+    st.title("🔐 Login")
 
-    user = st.text_input("Username")
-    pwd = st.text_input("Password", type="password")
+    role = st.selectbox("Login as", ["Admin", "Owner"])
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
 
     if st.button("Login"):
-        if user == ADMIN_USER and pwd == ADMIN_PASS:
-            st.session_state.admin_logged_in = True
-            st.success("Login Successful ✅")
-            st.rerun()
+
+        # ADMIN LOGIN
+        if role == "Admin":
+            if username == ADMIN_USER and password == ADMIN_PASS:
+                st.session_state.role = "admin"
+                st.session_state.user = username
+                st.rerun()
+            else:
+                st.error("Invalid Admin Login ❌")
+
+        # OWNER LOGIN
         else:
-            st.error("Invalid Credentials ❌")
+            # Connect DB
+            scope = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+
+            creds = Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"],
+                scopes=scope
+            )
+
+            client = gspread.authorize(creds)
+            app_file = client.open_by_key(PG_APP_ID)
+            owners_sheet = app_file.worksheet("Owners")
+            owners_df = pd.DataFrame(owners_sheet.get_all_records())
+
+            user_row = owners_df[
+                (owners_df["username"] == username) &
+                (owners_df["password"] == password)
+            ]
+
+            if not user_row.empty:
+                st.session_state.role = "owner"
+                st.session_state.user = username
+                st.session_state.pg_id = user_row.iloc[0]["pg_id"]
+                st.session_state.pg_name = user_row.iloc[0]["pg_name"]
+                st.rerun()
+            else:
+                st.error("Invalid Owner Login ❌")
 
     st.stop()
 
 # -----------------------
-# AUTH (after login)
+# GOOGLE AUTH (AFTER LOGIN)
 # -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -56,101 +96,81 @@ client = gspread.authorize(creds)
 # -----------------------
 # LOAD DATA
 # -----------------------
-def load_data():
-    pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("Sheet1")
-    pg_df = pd.DataFrame(pg_sheet.get_all_records())
+pg_file = client.open_by_key(PG_DATA_ID)
+pg_sheet = pg_file.worksheet("Sheet1")
+pg_df = pd.DataFrame(pg_sheet.get_all_records())
 
-    app_file = client.open_by_key(PG_APP_ID)
-    owners_sheet = app_file.worksheet("Owners")
-    owners_df = pd.DataFrame(owners_sheet.get_all_records())
+app_file = client.open_by_key(PG_APP_ID)
+owners_sheet = app_file.worksheet("Owners")
+rooms_sheet = app_file.worksheet("rooms")
+bookings_sheet = app_file.worksheet("Bookings")
 
-    return pg_df, owners_df, owners_sheet
-
-pg_df, owners_df, owners_sheet = load_data()
+owners_df = pd.DataFrame(owners_sheet.get_all_records())
+rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
+bookings_df = pd.DataFrame(bookings_sheet.get_all_records())
 
 # -----------------------
-# ADMIN DASHBOARD
+# LOGOUT
 # -----------------------
-st.title("🏠 Admin Dashboard")
-st.success("Connected Successfully ✅")
-
-# Logout
 if st.button("Logout"):
-    st.session_state.admin_logged_in = False
+    st.session_state.role = None
+    st.session_state.user = None
     st.rerun()
 
-# -----------------------
-# SELECT PG
-# -----------------------
-pg_names = pg_df["pg_name"].dropna().unique().tolist()
-selected_pg = st.selectbox("Select PG", pg_names)
+# =======================
+# ADMIN DASHBOARD
+# =======================
+if st.session_state.role == "admin":
 
-pg_id = None
-if selected_pg:
-    row = pg_df[pg_df["pg_name"] == selected_pg]
-    if not row.empty:
-        pg_id = row.iloc[0]["pg_id"]
+    st.title("🏠 Admin Dashboard")
 
-# -----------------------
-# CREATE OWNER
-# -----------------------
-st.subheader("➕ Create Owner")
+    # PG SELECT
+    pg_names = pg_df["pg_name"].dropna().unique().tolist()
+    selected_pg = st.selectbox("Select PG", pg_names)
 
-username = st.text_input("Username")
-password = st.text_input("Password")
+    pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-if st.button("Create Owner"):
+    # CREATE OWNER
+    st.subheader("➕ Create Owner")
 
-    if username and password and pg_id:
+    username = st.text_input("Username")
+    password = st.text_input("Password")
 
-        if not owners_df.empty and username in owners_df["username"].values:
-            st.error("Username already exists ❌")
+    if st.button("Create Owner"):
 
-        else:
+        if username and password:
+
             owners_sheet.append_row([
-                str(username),
-                str(password),
-                str(pg_id),
-                str(selected_pg)
+                username,
+                password,
+                pg_id,
+                selected_pg
             ])
 
             st.success("Owner Created ✅")
             st.rerun()
 
-    else:
-        st.error("Fill all fields")
-
-# -----------------------
-# OWNERS LIST
-# -----------------------
-st.subheader("📋 Owners List")
-
-if not owners_df.empty:
+    # OWNER LIST
+    st.subheader("📋 Owners")
     st.dataframe(owners_df)
 
-    # -----------------------
-    # DELETE OWNER
-    # -----------------------
-    st.subheader("❌ Delete Owner")
+# =======================
+# OWNER DASHBOARD
+# =======================
+elif st.session_state.role == "owner":
 
-    selected_user = st.selectbox(
-        "Select Owner",
-        owners_df["username"].tolist()
-    )
+    st.title(f"🏠 {st.session_state.pg_name} Dashboard")
 
-    if st.button("Delete Owner"):
+    owner_pg_id = st.session_state.pg_id
 
-        try:
-            cell = owners_sheet.find(selected_user)
+    # FILTER ROOMS
+    owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
 
-            if cell:
-                owners_sheet.delete_rows(cell.row)
-                st.success("Deleted Successfully ✅")
-                st.rerun()
+    st.subheader("🛏 Rooms")
+    st.dataframe(owner_rooms)
 
-        except:
-            st.error("User not found")
+    # FILTER BOOKINGS
+    owner_bookings = bookings_df[bookings_df["pg_id"] == owner_pg_id]
 
-else:
-    st.info("No owners available")
+    st.subheader("📑 Bookings")
+    st.dataframe(owner_bookings)
