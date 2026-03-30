@@ -23,12 +23,10 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
 sheet = client.open_by_key(SHEET_ID)
 
-pg_sheet = sheet.worksheet("pg_data")
 room_sheet = sheet.worksheet("rooms")
 owner_sheet = sheet.worksheet("Owners")
 
 # -------- LOAD --------
-pg_df = pd.DataFrame(pg_sheet.get_all_records())
 room_df = pd.DataFrame(room_sheet.get_all_records())
 owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
@@ -79,26 +77,17 @@ elif st.session_state.page == "admin":
     username = st.text_input("Owner Username")
     password = st.text_input("Owner Password")
 
-    pg_name = st.text_input("PG Name")
-    location = st.text_input("Location")
-    owner_name = st.text_input("Owner Name")
-    owner_number = st.text_input("Owner Number")
-
-    if st.button("Create"):
+    if st.button("Create Owner"):
 
         pg_id = generate_pg_id()
 
-        owner_sheet.append_row([username, password, pg_id])
-
-        pg_sheet.append_row([
-            pg_id,
-            pg_name,
-            location,
-            owner_name,
-            owner_number
+        owner_sheet.append_row([
+            username,
+            password,
+            pg_id
         ])
 
-        st.success(f"Created PG: {pg_id}")
+        st.success(f"Owner Created | PG ID: {pg_id}")
         st.rerun()
 
     if st.button("Logout"):
@@ -114,41 +103,47 @@ elif st.session_state.page == "owner":
 
     st.write("PG ID:", pg_id)
 
-    # SHOW PG DETAILS
-    pg_row = pg_df[pg_df["pg_id"] == pg_id]
-
-    if not pg_row.empty:
-        st.write("PG Name:", pg_row.iloc[0]["pg_name"])
-        st.write("Location:", pg_row.iloc[0]["location"])
-
-    # ADD ROOM
+    # -------- ADD ROOM --------
     st.subheader("Add Room")
 
     room = st.text_input("Room No")
     floor = st.number_input("Floor", 1)
-    sharing = st.selectbox("Sharing", [1,2,3,4])
+    sharing = st.selectbox("Sharing", [1,2,3,4,5])
     beds = st.number_input("Beds", 0)
+
+    if beds > sharing:
+        st.warning("Beds cannot exceed sharing")
 
     if st.button("Save Room"):
 
-        room_sheet.append_row([
-            pg_id,
-            room,
-            floor,
-            sharing,
-            beds,
-            datetime.now().strftime("%Y-%m-%d %H:%M")
-        ])
+        if room == "":
+            st.error("Enter Room No")
 
-        st.success("Room Added")
-        st.rerun()
+        elif beds > sharing:
+            st.error("Invalid beds")
 
-    # SHOW ROOMS
+        else:
+            room_sheet.append_row([
+                pg_id,
+                room,
+                floor,
+                sharing,
+                beds,
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
+
+            st.success("Room Added")
+            st.rerun()
+
+    # -------- SHOW ROOMS --------
     st.subheader("My Rooms")
 
     my_rooms = room_df[room_df["pg_id"] == pg_id]
 
-    st.dataframe(my_rooms)
+    if not my_rooms.empty:
+        st.dataframe(my_rooms)
+    else:
+        st.info("No rooms yet")
 
     if st.button("Logout"):
         st.session_state.page = "login"
