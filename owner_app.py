@@ -65,6 +65,7 @@ if st.session_state.page == "login":
             if not user.empty:
                 st.session_state.page = "owner"
                 st.session_state.pg = user.iloc[0]["pg_id"]
+                st.session_state.pg_name = user.iloc[0]["username"]
                 st.rerun()
             else:
                 st.error("Wrong owner login")
@@ -79,16 +80,23 @@ elif st.session_state.page == "admin":
 
     if st.button("Create Owner"):
 
-        pg_id = generate_pg_id()
+        # Duplicate check
+        if not owner_df.empty and username in owner_df["username"].tolist():
+            st.error("Username already exists")
+        else:
+            pg_id = generate_pg_id()
 
-        owner_sheet.append_row([
-            username,
-            password,
-            pg_id
-        ])
+            owner_sheet.append_row([
+                username,
+                password,
+                pg_id
+            ])
 
-        st.success(f"Owner Created | PG ID: {pg_id}")
-        st.rerun()
+            st.success(f"Owner Created | PG ID: {pg_id}")
+            st.rerun()
+
+    st.subheader("Owners List")
+    st.dataframe(owner_df)
 
     if st.button("Logout"):
         st.session_state.page = "login"
@@ -100,8 +108,10 @@ elif st.session_state.page == "owner":
     st.subheader("Owner Dashboard")
 
     pg_id = st.session_state.pg
+    pg_name = st.session_state.pg_name
 
     st.write("PG ID:", pg_id)
+    st.write("PG Name:", pg_name)
 
     # -------- ADD ROOM --------
     st.subheader("Add Room")
@@ -123,20 +133,20 @@ elif st.session_state.page == "owner":
             st.error("Invalid beds")
 
         else:
-            # get pg_name from owners sheet
-pg_name = owner_df[owner_df["pg_id"] == pg_id].iloc[0]["username"]
+            # Get PG Name from owners
+            pg_name = owner_df[owner_df["pg_id"] == pg_id].iloc[0]["username"]
 
-room_sheet.append_row([
-    pg_id,
-    pg_name,
-    room,
-    floor,
-    sharing,
-    beds,
-    datetime.now().strftime("%Y-%m-%d %H:%M")
-])
+            room_sheet.append_row([
+                pg_id,
+                pg_name,
+                room,
+                floor,
+                sharing,
+                beds,
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
 
-            st.success("Room Added")
+            st.success("Room Added ✅")
             st.rerun()
 
     # -------- SHOW ROOMS --------
