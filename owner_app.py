@@ -31,25 +31,34 @@ room_sheet = sheet.worksheet("rooms")
 
 st.success("✅ Connected to Google Sheets")
 
+# 🔄 REFRESH BUTTON
+if st.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
+
 # -------- LOAD DATA --------
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5)
 def load_data():
     pg_df = pd.DataFrame(pg_sheet.get_all_records())
     owner_df = pd.DataFrame(owner_sheet.get_all_records())
     room_df = pd.DataFrame(room_sheet.get_all_records())
 
+    # CLEAN COLUMN NAMES
     if not pg_df.empty:
-        pg_df.columns = pg_df.columns.astype(str)
+        pg_df.columns = pg_df.columns.astype(str).str.strip().str.lower()
 
     if not owner_df.empty:
-        owner_df.columns = owner_df.columns.astype(str)
+        owner_df.columns = owner_df.columns.astype(str).str.strip().str.lower()
 
     if not room_df.empty:
-        room_df.columns = room_df.columns.astype(str)
+        room_df.columns = room_df.columns.astype(str).str.strip().str.lower()
 
     return pg_df, owner_df, room_df
 
 pg_df, owner_df, room_df = load_data()
+
+# DEBUG (remove later)
+# st.write(pg_df)
 
 # -------- SESSION --------
 if "page" not in st.session_state:
@@ -67,7 +76,6 @@ if st.session_state.page == "login":
 
     if st.button("Login"):
 
-        # ADMIN LOGIN
         if role == "Admin":
             if username == "admin" and password == "admin123":
                 st.session_state.page = "admin"
@@ -75,7 +83,6 @@ if st.session_state.page == "login":
             else:
                 st.error("Invalid admin login")
 
-        # OWNER LOGIN
         else:
             if not owner_df.empty:
                 user = owner_df[
@@ -101,12 +108,15 @@ elif st.session_state.page == "admin":
     username = st.text_input("Login Username")
     password = st.text_input("Password")
 
-    # SELECT PG FROM pg_data
-    if not pg_df.empty:
-        pg_list = pg_df["pg_name"].astype(str).tolist()
+    # DROPDOWN FIXED
+    if not pg_df.empty and "pg_name" in pg_df.columns:
+
+        pg_list = pg_df["pg_name"].dropna().astype(str).tolist()
+
         selected_pg = st.selectbox("Select PG", pg_list)
+
     else:
-        st.warning("No PGs found")
+        st.error("❌ pg_data empty or pg_name column missing")
         selected_pg = None
 
     if st.button("Create Owner"):
@@ -121,13 +131,13 @@ elif st.session_state.page == "admin":
             pg_id = selected_row.iloc[0]["pg_id"]
             pg_name = selected_pg
 
-            # DUPLICATE USERNAME CHECK
+            # DUPLICATE CHECK
             if not owner_df.empty:
                 if username in owner_df["username"].astype(str).tolist():
                     st.error("❌ Username already exists")
                     st.stop()
 
-            # SAVE OWNER (NO NEW PG ID)
+            # SAVE
             owner_sheet.append_row([
                 username,
                 password,
@@ -195,7 +205,7 @@ elif st.session_state.page == "owner":
             st.cache_data.clear()
             st.rerun()
 
-    # SHOW ROOMS
+    # DISPLAY ROOMS
     st.subheader("📊 My Rooms")
 
     if not room_df.empty:
