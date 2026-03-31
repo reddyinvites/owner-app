@@ -128,32 +128,72 @@ elif st.session_state.role == "admin":
             st.cache_data.clear()
             st.rerun()
 
-    # OWNER LIST
-    st.subheader("📋 Owners List")
+    # -----------------------
+# OWNER LIST (UPGRADED)
+# -----------------------
+st.subheader("📋 Owners List")
 
-    if not owners_df.empty:
-        st.dataframe(owners_df, use_container_width=True)
+if not owners_df.empty:
 
-        # DELETE OWNER
-        st.subheader("❌ Delete Owner")
+    # Clean data
+    owners_df["username"] = owners_df["username"].astype(str).str.strip()
+    owners_df["pg_name"] = owners_df["pg_name"].astype(str).str.strip()
 
-        owner_list = owners_df["username"].astype(str).tolist()
-        selected_owner = st.selectbox("Select Owner", owner_list)
+    # 🔍 Search
+    search = st.text_input("🔍 Search Owner")
 
-        if st.button("Delete Owner"):
-            try:
-                cell = owners_sheet.find(selected_owner)
-                owners_sheet.delete_rows(cell.row)
-
-                st.success("Owner Deleted ✅")
-                st.cache_data.clear()
-                st.rerun()
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+    if search:
+        filtered_df = owners_df[
+            owners_df["username"].str.contains(search, case=False)
+        ]
     else:
-        st.info("No owners available")
+        filtered_df = owners_df
 
+    st.dataframe(filtered_df, use_container_width=True)
+
+    # -----------------------
+    # DELETE OWNER
+    # -----------------------
+    st.subheader("❌ Delete Owner")
+
+    selected_owner = st.selectbox("Select Owner", filtered_df["username"])
+
+    if st.button("Delete Owner"):
+        try:
+            cell = owners_sheet.find(selected_owner)
+            owners_sheet.delete_rows(cell.row)
+
+            st.success("Owner Deleted ✅")
+            st.cache_data.clear()
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+    # -----------------------
+    # RESET PASSWORD
+    # -----------------------
+    st.subheader("🔑 Reset Password")
+
+    selected_owner2 = st.selectbox("Select Owner ", owners_df["username"], key="reset")
+
+    new_password = st.text_input("New Password")
+
+    if st.button("Update Password"):
+        try:
+            cell = owners_sheet.find(selected_owner2)
+            owners_sheet.update_cell(cell.row, 2, new_password)
+
+            st.success("Password Updated ✅")
+            st.cache_data.clear()
+            st.rerun()
+
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+else:
+    st.info("No owners available")
+    
 # -----------------------
 # OWNER DASHBOARD
 # -----------------------
