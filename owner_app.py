@@ -13,41 +13,55 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
 # -----------------------
-# AUTH (FIXED ✅)
+# AUTH (SAFE ✅)
 # -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
-    scopes=scope
-)
+def get_client():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scope
+    )
+    return gspread.authorize(creds)
 
-client = gspread.authorize(creds)
+client = get_client()
 
 # -----------------------
-# LOAD DATA
+# LOAD DATA (ONLY DATA ✅)
 # -----------------------
 @st.cache_data(ttl=5)
 def load_data():
+    client = get_client()
+
     pg_file = client.open_by_key(PG_DATA_ID)
     pg_df = pd.DataFrame(pg_file.worksheet("Sheet1").get_all_records())
 
+    app_file = client.open_by_key(PG_APP_ID)
+
+    owners_df = pd.DataFrame(app_file.worksheet("Owners").get_all_records())
+    rooms_df = pd.DataFrame(app_file.worksheet("rooms").get_all_records())
+    bookings_df = pd.DataFrame(app_file.worksheet("Bookings").get_all_records())
+
+    return pg_df, owners_df, rooms_df, bookings_df
+
+# -----------------------
+# GET SHEETS (NO CACHE ❗)
+# -----------------------
+def get_sheets():
+    client = get_client()
     app_file = client.open_by_key(PG_APP_ID)
 
     owners_sheet = app_file.worksheet("Owners")
     rooms_sheet = app_file.worksheet("rooms")
     bookings_sheet = app_file.worksheet("Bookings")
 
-    owners_df = pd.DataFrame(owners_sheet.get_all_records())
-    rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
-    bookings_df = pd.DataFrame(bookings_sheet.get_all_records())
+    return owners_sheet, rooms_sheet, bookings_sheet
 
-    return pg_df, owners_df, rooms_df, bookings_df, owners_sheet, rooms_sheet, bookings_sheet
-
-pg_df, owners_df, rooms_df, bookings_df, owners_sheet, rooms_sheet, bookings_sheet = load_data()
+pg_df, owners_df, rooms_df, bookings_df = load_data()
+owners_sheet, rooms_sheet, bookings_sheet = get_sheets()
 
 # -----------------------
 # SESSION
@@ -108,9 +122,7 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # -----------------------
     # CREATE OWNER
-    # -----------------------
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df["pg_name"].dropna().tolist()
@@ -121,41 +133,41 @@ elif st.session_state.role == "admin":
 
     if st.button("Create Owner"):
         if new_user and new_pass:
+            try:
+                pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-            pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
+                owners_sheet.append_row([
+                    new_user.strip(),
+                    new_pass.strip(),
+                    pg_id,
+                    selected_pg
+                ])
 
-            owners_sheet.append_row([new_user.strip(), new_pass.strip(), pg_id, selected_pg])
+                st.success("Owner Created ✅")
+                st.cache_data.clear()
+                st.rerun()
 
-            st.success("Owner Created ✅")
-            st.cache_data.clear()
-            st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
         else:
-            st.error("Enter username & password ❌")
+            st.error("Enter all fields ❌")
 
-    # -----------------------
     # OWNER LIST
-    # -----------------------
     st.subheader("📋 Owners List")
 
     if not owners_df.empty:
 
         owners_df["username"] = owners_df["username"].astype(str).str.strip()
-        owners_df["pg_name"] = owners_df["pg_name"].astype(str).str.strip()
 
         search = st.text_input("🔍 Search Owner")
 
-        if search:
-            filtered_df = owners_df[
-                owners_df["username"].str.contains(search, case=False)
-            ]
-        else:
-            filtered_df = owners_df
+        filtered_df = owners_df[
+            owners_df["username"].str.contains(search, case=False)
+        ] if search else owners_df
 
         st.dataframe(filtered_df, use_container_width=True)
 
-        # -----------------------
-        # DELETE OWNER (FIXED ✅)
-        # -----------------------
+        # DELETE OWNER
         st.subheader("❌ Delete Owner")
 
         selected_owner = st.selectbox("Select Owner", filtered_df["username"])
@@ -176,12 +188,10 @@ elif st.session_state.role == "admin":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-        # -----------------------
         # RESET PASSWORD
-        # -----------------------
         st.subheader("🔑 Reset Password")
 
-        selected_owner2 = st.selectbox("Select Owner ", owners_df["username"], key="reset")
+        selected_owner2 = st.selectbox("Select Owner", owners_df["username"], key="reset")
         new_password = st.text_input("New Password")
 
         if st.button("Update Password"):
@@ -227,17 +237,12 @@ elif st.session_state.role == "owner":
 
     st.title(f"🏠 {owner_pg_name}")
 
-    # -----------------------
     # ROOMS
-    # -----------------------
     st.subheader("🛏 Rooms")
-
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
     st.dataframe(owner_rooms, use_container_width=True)
 
-    # -----------------------
     # ADD ROOM
-    # -----------------------
     st.subheader("➕ Add Room")
 
     room_no = st.text_input("Room Number")
@@ -273,9 +278,7 @@ elif st.session_state.role == "owner":
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    # -----------------------
     # BOOKINGS
-    # -----------------------
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty and "pg_id" in bookings_df.columns:
