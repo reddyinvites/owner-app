@@ -13,7 +13,7 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
 # -----------------------
-# AUTH (STABLE)
+# AUTH
 # -----------------------
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -60,7 +60,7 @@ if "username" not in st.session_state:
     st.session_state.username = ""
 
 # -----------------------
-# LOGIN PAGE
+# LOGIN
 # -----------------------
 if not st.session_state.login:
 
@@ -81,15 +81,18 @@ if not st.session_state.login:
                 st.error("Invalid Admin ❌")
 
         else:
-            owner = owners_df[
-                (owners_df["username"].astype(str).str.strip() == username.strip()) &
-                (owners_df["password"].astype(str).str.strip() == password.strip())
+            owners_df["username"] = owners_df["username"].astype(str).str.strip().str.lower()
+            owners_df["password"] = owners_df["password"].astype(str).str.strip()
+
+            user = owners_df[
+                (owners_df["username"] == username.strip().lower()) &
+                (owners_df["password"] == password.strip())
             ]
 
-            if not owner.empty:
+            if not user.empty:
                 st.session_state.login = True
                 st.session_state.role = "owner"
-                st.session_state.username = username
+                st.session_state.username = username.strip().lower()
                 st.rerun()
             else:
                 st.error("Invalid Owner ❌")
@@ -105,30 +108,51 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
+    # CREATE OWNER
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df["pg_name"].dropna().tolist()
     selected_pg = st.selectbox("Select PG", pg_names)
 
-    username = st.text_input("Owner Username")
-    password = st.text_input("Owner Password")
+    new_user = st.text_input("Owner Username")
+    new_pass = st.text_input("Owner Password")
 
     if st.button("Create Owner"):
-        if username and password:
+        if new_user and new_pass:
 
             pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-            owners_sheet.append_rows(
-                [[username, password, pg_id, selected_pg]],
-                value_input_option="USER_ENTERED"
-            )
+            owners_sheet.append_row([new_user, new_pass, pg_id, selected_pg])
 
             st.success("Owner Created ✅")
             st.cache_data.clear()
             st.rerun()
 
+    # OWNER LIST
     st.subheader("📋 Owners List")
-    st.dataframe(owners_df)
+
+    if not owners_df.empty:
+        st.dataframe(owners_df, use_container_width=True)
+
+        # DELETE OWNER
+        st.subheader("❌ Delete Owner")
+
+        owner_list = owners_df["username"].astype(str).tolist()
+        selected_owner = st.selectbox("Select Owner", owner_list)
+
+        if st.button("Delete Owner"):
+            try:
+                cell = owners_sheet.find(selected_owner)
+                owners_sheet.delete_rows(cell.row)
+
+                st.success("Owner Deleted ✅")
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+    else:
+        st.info("No owners available")
 
 # -----------------------
 # OWNER DASHBOARD
@@ -139,8 +163,10 @@ elif st.session_state.role == "owner":
         st.session_state.clear()
         st.rerun()
 
+    owners_df["username"] = owners_df["username"].astype(str).str.strip().str.lower()
+
     owner_data = owners_df[
-        owners_df["username"].astype(str).str.strip() == st.session_state.username.strip()
+        owners_df["username"] == st.session_state.username
     ]
 
     if owner_data.empty:
@@ -152,17 +178,13 @@ elif st.session_state.role == "owner":
 
     st.title(f"🏠 {owner_pg_name}")
 
-    # -----------------------
     # ROOMS
-    # -----------------------
     st.subheader("🛏 Rooms")
 
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
-    st.dataframe(owner_rooms)
+    st.dataframe(owner_rooms, use_container_width=True)
 
-    # -----------------------
-    # ADD ROOM (FINAL LOGIC)
-    # -----------------------
+    # ADD ROOM
     st.subheader("➕ Add Room")
 
     room_no = st.text_input("Room Number")
@@ -187,40 +209,33 @@ elif st.session_state.role == "owner":
         if not room_no:
             st.error("Enter room number ❌")
 
-        elif total_beds > sharing:
-            st.error("Total beds > sharing ❌")
-
-        elif available_beds > total_beds:
-            st.error("Available beds > total ❌")
-
         else:
-            new_row = [
-                owner_pg_id,
-                owner_pg_name,
-                room_no,
-                int(floor),
-                int(sharing),
-                int(available_beds),
-                int(total_beds),
-                pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-            ]
+            try:
+                new_row = [
+                    owner_pg_id,
+                    owner_pg_name,
+                    room_no,
+                    int(floor),
+                    int(sharing),
+                    int(available_beds),
+                    int(total_beds),
+                    pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                ]
 
-            rooms_sheet.append_rows(
-                [new_row],
-                value_input_option="USER_ENTERED"
-            )
+                rooms_sheet.append_row(new_row)
 
-            st.success("Room Added ✅")
-            st.cache_data.clear()
-            st.rerun()
+                st.success("Room Added ✅")
+                st.cache_data.clear()
+                st.rerun()
 
-    # -----------------------
+            except Exception as e:
+                st.error(f"Error: {e}")
+
     # BOOKINGS
-    # -----------------------
     st.subheader("📋 Bookings")
 
-    if "pg_id" in bookings_df.columns:
+    if not bookings_df.empty and "pg_id" in bookings_df.columns:
         owner_bookings = bookings_df[bookings_df["pg_id"] == owner_pg_id]
-        st.dataframe(owner_bookings)
+        st.dataframe(owner_bookings, use_container_width=True)
     else:
-        st.warning("No bookings data")
+        st.info("No bookings yet")
