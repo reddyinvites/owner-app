@@ -10,37 +10,52 @@ from datetime import datetime
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
+# -----------------------
+# AUTH
+# -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-# -----------------------
-# AUTH
-# -----------------------
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
-    scopes=scope
-)
+try:
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=scope
+    )
+    client = gspread.authorize(creds)
+except Exception as e:
+    st.error(f"Auth Error: {e}")
+    st.stop()
 
-client = gspread.authorize(creds)
-
 # -----------------------
-# LOAD DATA
+# SAFE LOAD DATA
 # -----------------------
 @st.cache_data
 def load_data():
-    pg_file = client.open_by_key(PG_DATA_ID)
-    pg_df = pd.DataFrame(pg_file.worksheet("Sheet1").get_all_records())
+    try:
+        pg_file = client.open_by_key(PG_DATA_ID)
+        pg_df = pd.DataFrame(pg_file.worksheet("Sheet1").get_all_records())
+    except:
+        pg_df = pd.DataFrame()
 
-    app_file = client.open_by_key(PG_APP_ID)
-    owners_sheet = app_file.worksheet("Owners")
-    rooms_sheet = app_file.worksheet("rooms")
-    bookings_sheet = app_file.worksheet("Bookings")
+    try:
+        app_file = client.open_by_key(PG_APP_ID)
 
-    owners_df = pd.DataFrame(owners_sheet.get_all_records())
-    rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
-    bookings_df = pd.DataFrame(bookings_sheet.get_all_records())
+        owners_sheet = app_file.worksheet("Owners")
+        rooms_sheet = app_file.worksheet("rooms")
+        bookings_sheet = app_file.worksheet("Bookings")
+
+        owners_df = pd.DataFrame(owners_sheet.get_all_records())
+        rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
+        bookings_df = pd.DataFrame(bookings_sheet.get_all_records())
+
+    except:
+        owners_df = pd.DataFrame()
+        rooms_df = pd.DataFrame()
+        bookings_df = pd.DataFrame()
+        owners_sheet = None
+        rooms_sheet = None
 
     return pg_df, owners_df, rooms_df, bookings_df, owners_sheet, rooms_sheet
 
@@ -67,7 +82,10 @@ if not st.session_state.login:
 
     if st.button("Login"):
 
-        # 🔥 FIX: safe match
+        if owners_df.empty:
+            st.error("Owners sheet empty ❌")
+            st.stop()
+
         owner_data = owners_df[
             (owners_df["username"].astype(str).str.strip() == username.strip()) &
             (owners_df["password"].astype(str).str.strip() == password.strip())
@@ -81,7 +99,7 @@ if not st.session_state.login:
             st.error("Invalid Login ❌")
 
 # -----------------------
-# OWNER DASHBOARD
+# DASHBOARD
 # -----------------------
 else:
 
@@ -91,7 +109,6 @@ else:
         owners_df["username"].astype(str).str.strip() == st.session_state.user
     ]
 
-    # 🔥 SAFETY FIX
     if owner_data.empty:
         st.error("Owner data missing ❌")
         st.stop()
@@ -106,11 +123,13 @@ else:
     # -----------------------
     st.subheader("🛏 Rooms")
 
-    owner_rooms = rooms_df[
-        rooms_df["pg_id"].astype(str) == owner_pg_id
-    ]
-
-    st.dataframe(owner_rooms)
+    if not rooms_df.empty and "pg_id" in rooms_df.columns:
+        owner_rooms = rooms_df[
+            rooms_df["pg_id"].astype(str) == owner_pg_id
+        ]
+        st.dataframe(owner_rooms)
+    else:
+        st.info("No rooms data")
 
     # -----------------------
     # ADD ROOM
@@ -124,26 +143,28 @@ else:
 
     if st.button("Add Room"):
 
-        if room_no:
+        if rooms_sheet is None:
+            st.error("Rooms sheet missing ❌")
+            st.stop()
 
-            try:
-                rooms_sheet.append_row([
-                    owner_pg_id,
-                    owner_pg_name,
-                    room_no,
-                    floor,
-                    sharing,
-                    total_beds,
-                    total_beds,
-                    datetime.now().strftime("%Y-%m-%d %H:%M")
-                ])
+        try:
+            rooms_sheet.append_row([
+                owner_pg_id,
+                owner_pg_name,
+                room_no,
+                floor,
+                sharing,
+                total_beds,
+                total_beds,
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
 
-                st.success("Room Added ✅")
-                st.cache_data.clear()
-                st.rerun()
+            st.success("Room Added ✅")
+            st.cache_data.clear()
+            st.rerun()
 
-            except Exception as e:
-                st.error(f"Error: {e}")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
     # -----------------------
     # BOOKINGS
@@ -151,12 +172,9 @@ else:
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty and "pg_id" in bookings_df.columns:
-
         owner_bookings = bookings_df[
             bookings_df["pg_id"].astype(str) == owner_pg_id
         ]
-
         st.dataframe(owner_bookings)
-
     else:
         st.info("No bookings yet")
