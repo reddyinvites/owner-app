@@ -164,35 +164,60 @@ elif st.session_state.role == "owner":
     st.dataframe(owner_rooms)
 
     # -----------------------
-    # ADD ROOM
-    # -----------------------
-    st.subheader("➕ Add Room")
+# ADD ROOM (UPDATED)
+# -----------------------
+st.subheader("➕ Add Room")
 
-    room_no = st.text_input("Room Number")
-    floor = st.number_input("Floor", min_value=0)
-    sharing = st.selectbox("Sharing", [1, 2, 3, 4])
-    total_beds = st.number_input("Total Beds", min_value=1)
+room_no = st.text_input("Room Number")
 
-    if st.button("Add Room"):
-        if room_no:
+floor = st.number_input("Floor", min_value=0)
 
-            rooms_sheet.append_row([
-                owner_pg_id,
-                owner_pg_name,
-                room_no,
-                int(floor),
-                int(sharing),
-                int(total_beds),   # available beds
-                int(total_beds),   # total beds
-                pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-            ])
+sharing = st.selectbox("Sharing", [1, 2, 3, 4])
 
-            st.success("Room Added ✅")
-            st.cache_data.clear()
-            st.rerun()
+# 👉 total beds max = sharing
+total_beds = st.number_input(
+    "Total Beds",
+    min_value=1,
+    max_value=sharing
+)
 
-        else:
-            st.error("Enter room number")
+# 👉 available beds max = total beds
+available_beds = st.number_input(
+    "Available Beds",
+    min_value=0,
+    max_value=total_beds
+)
+
+# -----------------------
+# VALIDATION + SAVE
+# -----------------------
+if st.button("Add Room"):
+
+    if not room_no:
+        st.error("Enter room number ❌")
+
+    elif total_beds > sharing:
+        st.error("Total beds cannot exceed sharing ❌")
+
+    elif available_beds > total_beds:
+        st.error("Available beds cannot exceed total beds ❌")
+
+    else:
+        rooms_sheet.append_row([
+            owner_pg_id,
+            owner_pg_name,
+            room_no,
+            int(floor),
+            int(sharing),
+            int(available_beds),
+            int(total_beds),
+            pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+        ])
+
+        st.success("Room Added Successfully ✅")
+        st.cache_data.clear()
+        st.rerun()
+
 
     # -----------------------
     # BOOKINGS
