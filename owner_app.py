@@ -129,71 +129,64 @@ elif st.session_state.role == "admin":
             st.rerun()
 
     # -----------------------
-# OWNER LIST (UPGRADED)
-# -----------------------
-st.subheader("📋 Owners List")
+    # OWNER LIST (UPGRADED)
+    # -----------------------
+    st.subheader("📋 Owners List")
 
-if not owners_df.empty:
+    if not owners_df.empty:
 
-    # Clean data
-    owners_df["username"] = owners_df["username"].astype(str).str.strip()
-    owners_df["pg_name"] = owners_df["pg_name"].astype(str).str.strip()
+        owners_df["username"] = owners_df["username"].astype(str).str.strip()
+        owners_df["pg_name"] = owners_df["pg_name"].astype(str).str.strip()
 
-    # 🔍 Search
-    search = st.text_input("🔍 Search Owner")
+        search = st.text_input("🔍 Search Owner")
 
-    if search:
-        filtered_df = owners_df[
-            owners_df["username"].str.contains(search, case=False)
-        ]
+        if search:
+            filtered_df = owners_df[
+                owners_df["username"].str.contains(search, case=False)
+            ]
+        else:
+            filtered_df = owners_df
+
+        st.dataframe(filtered_df, use_container_width=True)
+
+        # DELETE OWNER
+        st.subheader("❌ Delete Owner")
+
+        selected_owner = st.selectbox("Select Owner", filtered_df["username"])
+
+        if st.button("Delete Owner"):
+            try:
+                cell = owners_sheet.find(selected_owner)
+                owners_sheet.delete_rows(cell.row)
+
+                st.success("Owner Deleted ✅")
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+        # RESET PASSWORD
+        st.subheader("🔑 Reset Password")
+
+        selected_owner2 = st.selectbox("Select Owner ", owners_df["username"], key="reset")
+        new_password = st.text_input("New Password")
+
+        if st.button("Update Password"):
+            try:
+                cell = owners_sheet.find(selected_owner2)
+                owners_sheet.update_cell(cell.row, 2, new_password)
+
+                st.success("Password Updated ✅")
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+
     else:
-        filtered_df = owners_df
+        st.info("No owners available")
 
-    st.dataframe(filtered_df, use_container_width=True)
-
-    # -----------------------
-    # DELETE OWNER
-    # -----------------------
-    st.subheader("❌ Delete Owner")
-
-    selected_owner = st.selectbox("Select Owner", filtered_df["username"])
-
-    if st.button("Delete Owner"):
-        try:
-            cell = owners_sheet.find(selected_owner)
-            owners_sheet.delete_rows(cell.row)
-
-            st.success("Owner Deleted ✅")
-            st.cache_data.clear()
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-    # -----------------------
-    # RESET PASSWORD
-    # -----------------------
-    st.subheader("🔑 Reset Password")
-
-    selected_owner2 = st.selectbox("Select Owner ", owners_df["username"], key="reset")
-
-    new_password = st.text_input("New Password")
-
-    if st.button("Update Password"):
-        try:
-            cell = owners_sheet.find(selected_owner2)
-            owners_sheet.update_cell(cell.row, 2, new_password)
-
-            st.success("Password Updated ✅")
-            st.cache_data.clear()
-            st.rerun()
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-else:
-    st.info("No owners available")
-    
 # -----------------------
 # OWNER DASHBOARD
 # -----------------------
@@ -220,7 +213,6 @@ elif st.session_state.role == "owner":
 
     # ROOMS
     st.subheader("🛏 Rooms")
-
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
     st.dataframe(owner_rooms, use_container_width=True)
 
@@ -232,23 +224,13 @@ elif st.session_state.role == "owner":
 
     sharing = st.selectbox("Sharing", [1, 2, 3, 4])
 
-    total_beds = st.number_input(
-        "Total Beds",
-        min_value=1,
-        max_value=sharing
-    )
-
-    available_beds = st.number_input(
-        "Available Beds",
-        min_value=0,
-        max_value=total_beds
-    )
+    total_beds = st.number_input("Total Beds", min_value=1, max_value=sharing)
+    available_beds = st.number_input("Available Beds", min_value=0, max_value=total_beds)
 
     if st.button("Add Room"):
 
         if not room_no:
             st.error("Enter room number ❌")
-
         else:
             try:
                 new_row = [
