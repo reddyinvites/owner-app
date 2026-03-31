@@ -10,14 +10,14 @@ from datetime import datetime
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-# -----------------------
-# AUTH
-# -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
+# -----------------------
+# AUTH (SAFE)
+# -----------------------
 try:
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
@@ -29,7 +29,7 @@ except Exception as e:
     st.stop()
 
 # -----------------------
-# SAFE LOAD DATA
+# LOAD DATA (SAFE)
 # -----------------------
 @st.cache_data
 def load_data():
@@ -75,7 +75,7 @@ if "user" not in st.session_state:
 # -----------------------
 if not st.session_state.login:
 
-    st.title("🔐 Login")
+    st.title("🔐 Owner Login")
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
