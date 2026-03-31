@@ -13,7 +13,7 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
 # -----------------------
-# AUTH (FIXED)
+# AUTH (STABLE)
 # -----------------------
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -33,8 +33,7 @@ client = gspread.authorize(creds)
 @st.cache_data(ttl=5)
 def load_data():
     pg_file = client.open_by_key(PG_DATA_ID)
-    pg_sheet = pg_file.worksheet("Sheet1")
-    pg_df = pd.DataFrame(pg_sheet.get_all_records())
+    pg_df = pd.DataFrame(pg_file.worksheet("Sheet1").get_all_records())
 
     app_file = client.open_by_key(PG_APP_ID)
 
@@ -61,7 +60,7 @@ if "username" not in st.session_state:
     st.session_state.username = ""
 
 # -----------------------
-# LOGIN
+# LOGIN PAGE
 # -----------------------
 if not st.session_state.login:
 
@@ -73,7 +72,6 @@ if not st.session_state.login:
 
     if st.button("Login"):
 
-        # ADMIN
         if role == "Admin":
             if username == ADMIN_USER and password == ADMIN_PASS:
                 st.session_state.login = True
@@ -82,7 +80,6 @@ if not st.session_state.login:
             else:
                 st.error("Invalid Admin ❌")
 
-        # OWNER
         else:
             owner = owners_df[
                 (owners_df["username"].astype(str).str.strip() == username.strip()) &
@@ -108,7 +105,6 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # CREATE OWNER
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df["pg_name"].dropna().tolist()
@@ -122,13 +118,15 @@ elif st.session_state.role == "admin":
 
             pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-            owners_sheet.append_row([username, password, pg_id, selected_pg])
+            owners_sheet.append_rows(
+                [[username, password, pg_id, selected_pg]],
+                value_input_option="USER_ENTERED"
+            )
 
             st.success("Owner Created ✅")
             st.cache_data.clear()
             st.rerun()
 
-    # SHOW OWNERS
     st.subheader("📋 Owners List")
     st.dataframe(owners_df)
 
@@ -160,64 +158,61 @@ elif st.session_state.role == "owner":
     st.subheader("🛏 Rooms")
 
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
-
     st.dataframe(owner_rooms)
 
     # -----------------------
-# ADD ROOM (UPDATED)
-# -----------------------
-st.subheader("➕ Add Room")
+    # ADD ROOM (FINAL LOGIC)
+    # -----------------------
+    st.subheader("➕ Add Room")
 
-room_no = st.text_input("Room Number")
+    room_no = st.text_input("Room Number")
+    floor = st.number_input("Floor", min_value=0)
 
-floor = st.number_input("Floor", min_value=0)
+    sharing = st.selectbox("Sharing", [1, 2, 3, 4])
 
-sharing = st.selectbox("Sharing", [1, 2, 3, 4])
+    total_beds = st.number_input(
+        "Total Beds",
+        min_value=1,
+        max_value=sharing
+    )
 
-# 👉 total beds max = sharing
-total_beds = st.number_input(
-    "Total Beds",
-    min_value=1,
-    max_value=sharing
-)
+    available_beds = st.number_input(
+        "Available Beds",
+        min_value=0,
+        max_value=total_beds
+    )
 
-# 👉 available beds max = total beds
-available_beds = st.number_input(
-    "Available Beds",
-    min_value=0,
-    max_value=total_beds
-)
+    if st.button("Add Room"):
 
-# -----------------------
-# VALIDATION + SAVE
-# -----------------------
-if st.button("Add Room"):
+        if not room_no:
+            st.error("Enter room number ❌")
 
-    if not room_no:
-        st.error("Enter room number ❌")
+        elif total_beds > sharing:
+            st.error("Total beds > sharing ❌")
 
-    elif total_beds > sharing:
-        st.error("Total beds cannot exceed sharing ❌")
+        elif available_beds > total_beds:
+            st.error("Available beds > total ❌")
 
-    elif available_beds > total_beds:
-        st.error("Available beds cannot exceed total beds ❌")
+        else:
+            new_row = [
+                owner_pg_id,
+                owner_pg_name,
+                room_no,
+                int(floor),
+                int(sharing),
+                int(available_beds),
+                int(total_beds),
+                pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+            ]
 
-    else:
-        rooms_sheet.append_row([
-            owner_pg_id,
-            owner_pg_name,
-            room_no,
-            int(floor),
-            int(sharing),
-            int(available_beds),
-            int(total_beds),
-            pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-        ])
+            rooms_sheet.append_rows(
+                [new_row],
+                value_input_option="USER_ENTERED"
+            )
 
-        st.success("Room Added Successfully ✅")
-        st.cache_data.clear()
-        st.rerun()
-
+            st.success("Room Added ✅")
+            st.cache_data.clear()
+            st.rerun()
 
     # -----------------------
     # BOOKINGS
