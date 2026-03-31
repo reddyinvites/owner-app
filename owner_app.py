@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 
 # -----------------------
 # CONFIG
@@ -13,16 +13,16 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
 # -----------------------
-# AUTH
+# AUTH (FIXED ✅)
 # -----------------------
 scope = [
-    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
+creds = Credentials.from_service_account_info(
     st.secrets["gcp_service_account"],
-    scope
+    scopes=scope
 )
 
 client = gspread.authorize(creds)
@@ -108,7 +108,9 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
+    # -----------------------
     # CREATE OWNER
+    # -----------------------
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df["pg_name"].dropna().tolist()
@@ -122,14 +124,16 @@ elif st.session_state.role == "admin":
 
             pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-            owners_sheet.append_row([new_user, new_pass, pg_id, selected_pg])
+            owners_sheet.append_row([new_user.strip(), new_pass.strip(), pg_id, selected_pg])
 
             st.success("Owner Created ✅")
             st.cache_data.clear()
             st.rerun()
+        else:
+            st.error("Enter username & password ❌")
 
     # -----------------------
-    # OWNER LIST (UPGRADED)
+    # OWNER LIST
     # -----------------------
     st.subheader("📋 Owners List")
 
@@ -149,15 +153,21 @@ elif st.session_state.role == "admin":
 
         st.dataframe(filtered_df, use_container_width=True)
 
-        # DELETE OWNER
+        # -----------------------
+        # DELETE OWNER (FIXED ✅)
+        # -----------------------
         st.subheader("❌ Delete Owner")
 
         selected_owner = st.selectbox("Select Owner", filtered_df["username"])
 
         if st.button("Delete Owner"):
             try:
-                cell = owners_sheet.find(selected_owner)
-                owners_sheet.delete_rows(cell.row)
+                all_values = owners_sheet.get_all_values()
+
+                for i, row in enumerate(all_values):
+                    if row[0].strip() == selected_owner.strip():
+                        owners_sheet.delete_rows(i + 1)
+                        break
 
                 st.success("Owner Deleted ✅")
                 st.cache_data.clear()
@@ -166,7 +176,9 @@ elif st.session_state.role == "admin":
             except Exception as e:
                 st.error(f"Error: {e}")
 
+        # -----------------------
         # RESET PASSWORD
+        # -----------------------
         st.subheader("🔑 Reset Password")
 
         selected_owner2 = st.selectbox("Select Owner ", owners_df["username"], key="reset")
@@ -174,8 +186,12 @@ elif st.session_state.role == "admin":
 
         if st.button("Update Password"):
             try:
-                cell = owners_sheet.find(selected_owner2)
-                owners_sheet.update_cell(cell.row, 2, new_password)
+                all_values = owners_sheet.get_all_values()
+
+                for i, row in enumerate(all_values):
+                    if row[0].strip() == selected_owner2.strip():
+                        owners_sheet.update_cell(i + 1, 2, new_password.strip())
+                        break
 
                 st.success("Password Updated ✅")
                 st.cache_data.clear()
@@ -211,19 +227,23 @@ elif st.session_state.role == "owner":
 
     st.title(f"🏠 {owner_pg_name}")
 
+    # -----------------------
     # ROOMS
+    # -----------------------
     st.subheader("🛏 Rooms")
+
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
     st.dataframe(owner_rooms, use_container_width=True)
 
+    # -----------------------
     # ADD ROOM
+    # -----------------------
     st.subheader("➕ Add Room")
 
     room_no = st.text_input("Room Number")
     floor = st.number_input("Floor", min_value=0)
 
     sharing = st.selectbox("Sharing", [1, 2, 3, 4])
-
     total_beds = st.number_input("Total Beds", min_value=1, max_value=sharing)
     available_beds = st.number_input("Available Beds", min_value=0, max_value=total_beds)
 
@@ -253,7 +273,9 @@ elif st.session_state.role == "owner":
             except Exception as e:
                 st.error(f"Error: {e}")
 
+    # -----------------------
     # BOOKINGS
+    # -----------------------
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty and "pg_id" in bookings_df.columns:
