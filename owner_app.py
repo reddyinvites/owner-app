@@ -13,14 +13,13 @@ ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
 
 # -----------------------
-# AUTH (FIXED)
+# AUTH (FINAL FIX)
 # -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-# FIX: Proper secrets handling
 creds_dict = dict(st.secrets["gcp_service_account"])
 
 creds = Credentials.from_service_account_info(
@@ -29,7 +28,6 @@ creds = Credentials.from_service_account_info(
 )
 
 client = gspread.authorize(creds)
-client.session.headers.update({"Connection": "keep-alive"})
 
 # -----------------------
 # LOAD DATA
