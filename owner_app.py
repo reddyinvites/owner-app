@@ -32,12 +32,26 @@ client = get_client()
 # -----------------------
 # LOAD DATA (ONLY DATA ✅)
 # -----------------------
-@st.cache_data(ttl=5)
+@st.cache_data(ttl=60)
 def load_data():
     client = get_client()
 
+    # ---------- PG DATA FIX ----------
     pg_file = client.open_by_key(PG_DATA_ID)
-    pg_df = pd.DataFrame(pg_file.worksheet("Sheet1").get_all_records())
+
+    try:
+        pg_sheet = pg_file.worksheet("rooms")  # ✅ fixed name
+        pg_data = pg_sheet.get_all_records()
+
+        if pg_data:
+            pg_df = pd.DataFrame(pg_data)
+        else:
+            pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
+
+    except Exception as e:
+        st.error(f"PG Load Error: {e}")
+        pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
+    # --------------------------------
 
     app_file = client.open_by_key(PG_APP_ID)
 
@@ -125,7 +139,7 @@ elif st.session_state.role == "admin":
     # CREATE OWNER
     st.subheader("➕ Create Owner")
 
-    pg_names = pg_df["pg_name"].dropna().tolist()
+    pg_names = pg_df["pg_name"].dropna().tolist() if "pg_name" in pg_df.columns else []
     selected_pg = st.selectbox("Select PG", pg_names)
 
     new_user = st.text_input("Owner Username")
