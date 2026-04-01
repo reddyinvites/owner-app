@@ -27,23 +27,20 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-# ❌ REMOVED global client (important fix)
-
 # -----------------------
 # LOAD DATA (ONLY DATA ✅)
 # -----------------------
 @st.cache_data(ttl=60)
 def load_data():
 
-    client = get_client()  # ✅ use inside function only
+    client = get_client()
 
     # ---------- PG DATA ----------
     try:
         pg_file = client.open_by_key(PG_DATA_ID)
-        pg_sheet = pg_file.worksheet("rooms")  # ✅ your correct sheet
+        pg_sheet = pg_file.worksheet("rooms")
         pg_df = pd.DataFrame(pg_sheet.get_all_records())
-    except Exception as e:
-        st.error(f"PG Load Error: {e}")
+    except:
         pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
 
     # ---------- APP DATA ----------
@@ -59,7 +56,7 @@ def load_data():
 # GET SHEETS (NO CACHE ❗)
 # -----------------------
 def get_sheets():
-    client = get_client()  # ✅ fresh client
+    client = get_client()
 
     app_file = client.open_by_key(PG_APP_ID)
 
