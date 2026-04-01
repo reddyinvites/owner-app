@@ -13,7 +13,7 @@ ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
 
 # -----------------------
-# AUTH (SAFE ✅)
+# AUTH
 # -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -28,14 +28,13 @@ def get_client():
     return gspread.authorize(creds)
 
 # -----------------------
-# LOAD DATA (ONLY DATA ✅)
+# LOAD DATA
 # -----------------------
 @st.cache_data(ttl=60)
 def load_data():
-
     client = get_client()
 
-    # ---------- PG DATA ----------
+    # PG DATA
     try:
         pg_file = client.open_by_key(PG_DATA_ID)
         pg_sheet = pg_file.worksheet("rooms")
@@ -43,7 +42,7 @@ def load_data():
     except:
         pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
 
-    # ---------- APP DATA ----------
+    # APP DATA
     app_file = client.open_by_key(PG_APP_ID)
 
     owners_df = pd.DataFrame(app_file.worksheet("Owners").get_all_records())
@@ -53,7 +52,7 @@ def load_data():
     return pg_df, owners_df, rooms_df, bookings_df
 
 # -----------------------
-# GET SHEETS (NO CACHE ❗)
+# GET SHEETS
 # -----------------------
 def get_sheets():
     client = get_client()
@@ -247,6 +246,34 @@ elif st.session_state.role == "owner":
     st.subheader("🛏 Rooms")
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
     st.dataframe(owner_rooms, use_container_width=True)
+
+    # DELETE ROOM (NEW)
+    st.subheader("❌ Delete Room")
+
+    if not owner_rooms.empty:
+
+        room_options = owner_rooms["room_no"].astype(str).tolist()
+
+        selected_room = st.selectbox("Select Room to Delete", room_options)
+
+        if st.button("Delete Room"):
+            try:
+                all_values = rooms_sheet.get_all_values()
+
+                for i, row in enumerate(all_values):
+                    if str(row[2]).strip() == selected_room.strip() and str(row[0]).strip() == str(owner_pg_id):
+                        rooms_sheet.delete_rows(i + 1)
+                        break
+
+                st.success("Room Deleted ✅")
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    else:
+        st.info("No rooms to delete")
 
     # ADD ROOM
     st.subheader("➕ Add Room")
