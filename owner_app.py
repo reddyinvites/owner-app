@@ -27,32 +27,26 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-client = get_client()
+# ❌ REMOVED global client (important fix)
 
 # -----------------------
 # LOAD DATA (ONLY DATA ✅)
 # -----------------------
 @st.cache_data(ttl=60)
 def load_data():
-    client = get_client()
 
-    # ---------- PG DATA FIX ----------
-    pg_file = client.open_by_key(PG_DATA_ID)
+    client = get_client()  # ✅ use inside function only
 
+    # ---------- PG DATA ----------
     try:
-        pg_sheet = pg_file.worksheet("rooms")  # ✅ fixed name
-        pg_data = pg_sheet.get_all_records()
-
-        if pg_data:
-            pg_df = pd.DataFrame(pg_data)
-        else:
-            pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
-
+        pg_file = client.open_by_key(PG_DATA_ID)
+        pg_sheet = pg_file.worksheet("rooms")  # ✅ your correct sheet
+        pg_df = pd.DataFrame(pg_sheet.get_all_records())
     except Exception as e:
         st.error(f"PG Load Error: {e}")
         pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
-    # --------------------------------
 
+    # ---------- APP DATA ----------
     app_file = client.open_by_key(PG_APP_ID)
 
     owners_df = pd.DataFrame(app_file.worksheet("Owners").get_all_records())
@@ -65,7 +59,8 @@ def load_data():
 # GET SHEETS (NO CACHE ❗)
 # -----------------------
 def get_sheets():
-    client = get_client()
+    client = get_client()  # ✅ fresh client
+
     app_file = client.open_by_key(PG_APP_ID)
 
     owners_sheet = app_file.worksheet("Owners")
