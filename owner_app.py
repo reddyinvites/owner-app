@@ -34,11 +34,17 @@ def get_client():
 def load_data():
     client = get_client()
 
-    # PG DATA
+    # ✅ PG MASTER DATA (FIXED)
     try:
         pg_file = client.open_by_key(PG_DATA_ID)
-        pg_sheet = pg_file.worksheet("rooms")
+        pg_sheet = pg_file.worksheet("Sheet1")   # ✅ FIX HERE
         pg_df = pd.DataFrame(pg_sheet.get_all_records())
+
+        # CLEAN DATA
+        pg_df.columns = pg_df.columns.str.strip()
+        pg_df["pg_id"] = pg_df["pg_id"].astype(str).str.strip()
+        pg_df["pg_name"] = pg_df["pg_name"].astype(str).str.strip()
+
     except:
         pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
 
@@ -130,7 +136,7 @@ elif st.session_state.role == "admin":
     # CREATE OWNER
     st.subheader("➕ Create Owner")
 
-    pg_names = pg_df["pg_name"].dropna().tolist() if "pg_name" in pg_df.columns else []
+    pg_names = pg_df["pg_name"].dropna().unique().tolist()
     selected_pg = st.selectbox("Select PG", pg_names)
 
     new_user = st.text_input("Owner Username")
@@ -247,13 +253,12 @@ elif st.session_state.role == "owner":
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
     st.dataframe(owner_rooms, use_container_width=True)
 
-    # DELETE ROOM (NEW)
+    # DELETE ROOM
     st.subheader("❌ Delete Room")
 
     if not owner_rooms.empty:
 
         room_options = owner_rooms["room_no"].astype(str).tolist()
-
         selected_room = st.selectbox("Select Room to Delete", room_options)
 
         if st.button("Delete Room"):
