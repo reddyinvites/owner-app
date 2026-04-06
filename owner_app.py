@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-from datetime import datetime
 
 # ---------------- CONFIG ----------------
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
-st.set_page_config(page_title="PG Manager", layout="centered")
+st.set_page_config(page_title="PG Room Manager", layout="centered")
 
 # ---------------- GOOGLE ----------------
 scope = [
@@ -23,106 +22,97 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-# ---------------- LOAD DATA ----------------
+# ---------------- LOAD ----------------
 @st.cache_data(ttl=60)
 def load_data():
     client = get_client()
 
-    try:
-        pg_df = pd.DataFrame(
-            client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
-        )
-    except:
-        pg_df = pd.DataFrame()
+    df = pd.DataFrame(
+        client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
+    )
 
-    if not pg_df.empty:
-        pg_df.columns = pg_df.columns.str.strip().str.lower().str.replace(" ", "_")
+    if not df.empty:
+        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-    return pg_df
+    return df
 
-pg_df = load_data()
+df = load_data()
 
 # ---------------- UI ----------------
 st.title("🏠 PG Room Manager")
 
-if pg_df.empty:
+if df.empty:
     st.error("❌ Sheet1 is empty")
     st.stop()
 
-required_cols = ["pg_id", "pg_name", "room_no", "floor", "total_beds", "available_beds"]
+required_cols = ["pg_id", "pg_name", "room_no", "floor", "sharing_type", "total_beds", "available_beds"]
 
 for col in required_cols:
-    if col not in pg_df.columns:
+    if col not in df.columns:
         st.error(f"❌ Missing column: {col}")
         st.stop()
 
-pg_df = pg_df.dropna(subset=["pg_id", "pg_name"])
-
 # -------- PG DROPDOWN --------
-pg_unique = pg_df.drop_duplicates(subset=["pg_id"])
-pg_display = pg_unique["pg_name"].tolist()
+pg_unique = df.drop_duplicates(subset=["pg_id"])
+pg_names = pg_unique["pg_name"].tolist()
 
-selected_pg_name = st.selectbox("Select PG", pg_display)
+selected_pg = st.selectbox("Select PG", pg_names)
 
-selected_pg_row = pg_unique[pg_unique["pg_name"] == selected_pg_name].iloc[0]
-
-pg_id = selected_pg_row["pg_id"]
-pg_name = selected_pg_row["pg_name"]
+pg_row = pg_unique[pg_unique["pg_name"] == selected_pg].iloc[0]
+pg_id = pg_row["pg_id"]
 
 # -------- ROOM DROPDOWN --------
-pg_rooms = pg_df[pg_df["pg_id"] == pg_id]
+pg_rooms = df[df["pg_id"] == pg_id]
 
-room_options = pg_rooms["room_no"].astype(str).unique().tolist()
+room_options = pg_rooms["room_no"].astype(str).tolist()
 
-new_room = st.selectbox("Room Number", room_options)
+selected_room = st.selectbox("Room Number", room_options)
 
-room_data = pg_rooms[pg_rooms["room_no"].astype(str) == str(new_room)].iloc[0]
+room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
 
-# -------- AUTO FILL --------
-new_floor = int(room_data["floor"])
-st.write(f"Floor: {new_floor}")
+# -------- AUTO-FILL --------
+floor = int(room_data["floor"])
+st.write(f"Floor: {floor}")
 
-# -------- SHARING --------
-sharing = st.selectbox("Sharing", [1, 2, 3, 4, 5])
+# -------- SHARING FIX --------
+sharing_text = str(room_data["sharing_type"])  # "3 Sharing"
+sharing = int(sharing_text.split()[0])         # Extract 3
 
-# -------- TOTAL BEDS --------
-new_total = st.number_input(
+st.write(f"Sharing: {sharing} Sharing")
+
+# -------- EDITABLE --------
+total_beds = st.number_input(
     "Total Beds",
     min_value=1,
-    max_value=int(sharing),
-    value=min(int(room_data["total_beds"]), int(sharing))
+    max_value=sharing,
+    value=min(int(room_data["total_beds"]), sharing)
 )
 
-# -------- AVAILABLE BEDS --------
-new_available = st.number_input(
+available_beds = st.number_input(
     "Available Beds",
     min_value=0,
-    max_value=int(new_total),
-    value=min(int(room_data["available_beds"]), int(new_total))
+    max_value=total_beds,
+    value=min(int(room_data["available_beds"]), total_beds)
 )
 
 # -------- SAVE --------
 if st.button("Save Room"):
 
-    if new_total > sharing:
-        st.error("❌ Total beds cannot exceed sharing")
-        st.stop()
-
-    if new_available > new_total:
+    if available_beds > total_beds:
         st.error("❌ Available beds cannot exceed total beds")
         st.stop()
 
     sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1")
 
-    data = sheet.get_all_records()
-    df = pd.DataFrame(data)
+    all_data = sheet.get_all_records()
+    df_sheet = pd.DataFrame(all_data)
 
-    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+    df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
 
     match_index = None
 
-    for i, r in df.iterrows():
-        if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == str(new_room):
+    for i, r in df_sheet.iterrows():
+        if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == str(selected_room):
             match_index = i + 2
             break
 
@@ -135,17 +125,18 @@ if st.button("Save Room"):
         avail_col = headers.index("available_beds") + 1
 
         def col_letter(n):
-            string = ""
+            result = ""
             while n > 0:
                 n, r = divmod(n - 1, 26)
-                string = chr(65 + r) + string
-            return string
+                result = chr(65 + r) + result
+            return result
 
         total_letter = col_letter(total_col)
         avail_letter = col_letter(avail_col)
 
-        sheet.update(f"{total_letter}{match_index}", int(new_total))
-        sheet.update(f"{avail_letter}{match_index}", int(new_available))
+        # ✅ FIXED (2D list)
+        sheet.update(f"{total_letter}{match_index}", [[int(total_beds)]])
+        sheet.update(f"{avail_letter}{match_index}", [[int(available_beds)]])
 
         st.success("✅ Sheet1 Updated Successfully")
 
