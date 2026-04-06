@@ -227,16 +227,33 @@ elif st.session_state.role == "owner":
     pg_rooms = pg_df[pg_df["pg_id"] == pg_id]
 
     room_options = pg_rooms["room_no"].dropna().astype(str).unique().tolist()
-    floor_options = pg_rooms["floor"].dropna().unique().tolist()
-    total_options = pg_rooms["total_beds"].dropna().unique().tolist()
-    avail_options = pg_rooms["available_beds"].dropna().unique().tolist()
 
+    # -------- AUTO-FILL + EDITABLE --------
     new_room = st.selectbox("Room Number", room_options)
-    new_floor = st.selectbox("Floor", floor_options)
-    new_total = st.selectbox("Total Beds", total_options)
-    new_available = st.selectbox("Available Beds", avail_options)
+
+    room_data = pg_rooms[pg_rooms["room_no"].astype(str) == str(new_room)].iloc[0]
+
+    new_floor = room_data["floor"]
+    st.write(f"Floor: {new_floor}")
+
+    new_total = st.number_input(
+        "Total Beds",
+        min_value=1,
+        value=int(room_data["total_beds"])
+    )
+
+    new_available = st.number_input(
+        "Available Beds",
+        min_value=0,
+        max_value=new_total,
+        value=int(room_data["available_beds"])
+    )
 
     if st.button("Add Room"):
+
+        if new_available > new_total:
+            st.error("❌ Available beds cannot exceed total beds")
+            st.stop()
 
         sheet = get_client().open_by_key(PG_APP_ID).worksheet("rooms")
 
@@ -245,7 +262,7 @@ elif st.session_state.role == "owner":
             pg_name,
             new_room,
             new_floor,
-            "",  # sharing removed
+            "",
             new_total,
             new_available,
             datetime.now().strftime("%Y-%m-%d %H:%M")
