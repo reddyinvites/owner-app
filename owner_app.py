@@ -25,6 +25,7 @@ def get_client():
     )
     return gspread.authorize(creds)
 
+# ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=60)
 def load_data():
     client = get_client()
@@ -33,7 +34,7 @@ def load_data():
     # Sheet1
     df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
 
-    # Owners SAFE LOAD
+    # Owners (safe)
     try:
         owners_ws = sheet.worksheet("Owners")
     except:
@@ -42,15 +43,17 @@ def load_data():
 
     owners = pd.DataFrame(owners_ws.get_all_records())
 
-    # CLEAN
+    # -------- CLEAN --------
     if not df.empty:
-        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
 
     if not owners.empty:
-        owners.columns = owners.columns.str.strip().str.lower()
-        owners["username"] = owners["username"].astype(str).str.strip().str.lower()
-        owners["password"] = owners["password"].astype(str).str.strip()
-        owners["pg_id"] = owners["pg_id"].astype(str).str.strip()
+        owners.columns = [str(c).strip().lower().replace(" ", "_") for c in owners.columns]
+
+        owners["username"] = owners.get("username", "").astype(str).str.strip().str.lower()
+        owners["password"] = owners.get("password", "").astype(str).str.strip()
+        owners["pg_id"] = owners.get("pg_id", "").astype(str).str.strip()
+        owners["pg_name"] = owners.get("pg_name", "").astype(str).str.strip()
 
     return df, owners
 
@@ -85,8 +88,8 @@ if not st.session_state.login:
 
         else:
             user = owners_df[
-                (owners_df["username"] == username.strip().lower()) &
-                (owners_df["password"] == password.strip())
+                (owners_df.get("username","").astype(str).str.strip().str.lower() == username.strip().lower()) &
+                (owners_df.get("password","").astype(str).str.strip() == password.strip())
             ]
 
             if not user.empty:
@@ -144,16 +147,13 @@ else:
 
         st.title("🛠 Admin Dashboard")
 
-        # SUMMARY
         st.subheader("🏠 PG Summary")
         summary = pg_rooms.groupby("pg_name")[["total_beds","available_beds"]].sum().reset_index()
         st.dataframe(summary, use_container_width=True)
 
-        # ALL ROOMS
         st.subheader("📋 All Rooms")
         st.dataframe(pg_rooms, use_container_width=True)
 
-        # CREATE OWNER
         st.subheader("➕ Create Owner")
 
         selected_pg_owner = st.selectbox("Select PG", pg_names, key="owner_pg")
@@ -188,7 +188,6 @@ else:
 
         st.title("🏠 Room Manager")
 
-        # DASHBOARD
         st.subheader("📊 Dashboard")
 
         total_rooms = len(pg_rooms)
@@ -205,7 +204,6 @@ else:
 
         st.progress(occupancy / 100)
 
-        # ROOMS
         st.subheader("🛏 Rooms")
 
         for _, row in pg_rooms.iterrows():
@@ -228,7 +226,6 @@ else:
                 unsafe_allow_html=True
             )
 
-        # UPDATE ROOM
         st.subheader("➕ Update Room")
 
         room_options = pg_rooms["room_no"].astype(str).tolist()
@@ -269,7 +266,7 @@ else:
 
             data = sheet.get_all_records()
             df_sheet = pd.DataFrame(data)
-            df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
+            df_sheet.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sheet.columns]
 
             for i, r in df_sheet.iterrows():
                 if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == selected_room:
