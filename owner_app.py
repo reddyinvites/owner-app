@@ -15,7 +15,7 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# ---------------- CLIENT CACHE ----------------
+# ---------------- CLIENT ----------------
 @st.cache_resource
 def get_client():
     creds = Credentials.from_service_account_info(
@@ -24,7 +24,7 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-# ---------------- LOAD DATA (READ ONLY CACHE) ----------------
+# ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=300)
 def load_data():
     client = get_client()
@@ -44,11 +44,24 @@ def load_data():
         owners_df = pd.DataFrame(app.worksheet("Owners").get_all_records())
         rooms_df = pd.DataFrame(app.worksheet("rooms").get_all_records())
         bookings_df = pd.DataFrame(app.worksheet("Bookings").get_all_records())
-
     except:
         owners_df = pd.DataFrame()
         rooms_df = pd.DataFrame()
         bookings_df = pd.DataFrame()
+
+    # -------- CLEAN DATA (IMPORTANT FIX) --------
+    for df in [pg_df, owners_df, rooms_df, bookings_df]:
+        if not df.empty:
+            df.columns = df.columns.str.strip()
+
+    if "pg_id" in pg_df.columns:
+        pg_df["pg_id"] = pg_df["pg_id"].astype(str).str.strip()
+
+    if "pg_id" in owners_df.columns:
+        owners_df["pg_id"] = owners_df["pg_id"].astype(str).str.strip()
+
+    if "pg_id" in rooms_df.columns:
+        rooms_df["pg_id"] = rooms_df["pg_id"].astype(str).str.strip()
 
     return pg_df, owners_df, rooms_df, bookings_df
 
@@ -108,10 +121,10 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # -------- CREATE OWNER --------
+    # CREATE OWNER
     st.subheader("➕ Create Owner")
 
-    pg_names = pg_df.get("pg_name", pd.Series()).dropna().unique().tolist()
+    pg_names = pg_df["pg_name"].dropna().unique().tolist()
     selected_pg = st.selectbox("Select PG", pg_names)
 
     new_user = st.text_input("Owner Username")
@@ -123,12 +136,12 @@ elif st.session_state.role == "admin":
 
         pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-        sheet.append_row([new_user, new_pass, pg_id, selected_pg])
+        sheet.append_row([new_user.strip(), new_pass.strip(), pg_id, selected_pg])
 
         st.cache_data.clear()
         st.rerun()
 
-    # -------- OWNERS LIST --------
+    # OWNERS LIST
     st.subheader("📋 Owners List")
 
     for i, row in owners_df.iterrows():
@@ -139,7 +152,7 @@ elif st.session_state.role == "admin":
         c3.write(row.get("pg_id",""))
         c4.write(row.get("pg_name",""))
 
-        # DELETE OWNER
+        # DELETE
         if c5.button("❌", key=f"del_owner_{i}"):
             client = get_client()
             sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
@@ -148,7 +161,7 @@ elif st.session_state.role == "admin":
             st.cache_data.clear()
             st.rerun()
 
-        # EDIT OWNER
+        # EDIT
         if c6.button("✏️", key=f"edit_owner_{i}"):
             st.session_state[f"edit_owner_{i}"] = True
 
@@ -159,12 +172,12 @@ elif st.session_state.role == "admin":
             if st.button("Save", key=f"s{i}"):
                 client = get_client()
                 sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
-                sheet.update(f"A{i+2}:D{i+2}", [[u, p, row["pg_id"], row["pg_name"]]])
+                sheet.update(f"A{i+2}:D{i+2}", [[u.strip(), p.strip(), row["pg_id"], row["pg_name"]]])
 
                 st.cache_data.clear()
                 st.rerun()
 
-    # -------- PG LIST --------
+    # PG LIST
     st.subheader("🏠 All PGs")
 
     for i, row in pg_df.iterrows():
@@ -192,7 +205,7 @@ elif st.session_state.role == "admin":
             if st.button("Save PG", key=f"spg{i}"):
                 client = get_client()
                 sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
-                sheet.update(f"B{i+2}", name)
+                sheet.update(f"B{i+2}", name.strip())
 
                 st.cache_data.clear()
                 st.rerun()
@@ -212,13 +225,14 @@ elif st.session_state.role == "owner":
         st.error("Owner not found ❌")
         st.stop()
 
-    pg_id = str(owner.iloc[0]["pg_id"])
+    pg_id = str(owner.iloc[0]["pg_id"]).strip()
     pg_name = owner.iloc[0]["pg_name"]
 
     st.title(f"🏠 {pg_name}")
 
-    if not rooms_df.empty:
-        rooms_df["pg_id"] = rooms_df["pg_id"].astype(str)
+    # CLEAN AGAIN (SAFE)
+    if "pg_id" in rooms_df.columns:
+        rooms_df["pg_id"] = rooms_df["pg_id"].astype(str).str.strip()
 
     owner_rooms = rooms_df[rooms_df["pg_id"] == pg_id]
 
