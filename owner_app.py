@@ -29,7 +29,7 @@ def get_client():
 def load_data():
     client = get_client()
 
-    # -------- SHEET1 (MAIN DATA) --------
+    # -------- SHEET1 --------
     try:
         sheet1 = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
         pg_df = pd.DataFrame(sheet1.get_all_records())
@@ -37,13 +37,13 @@ def load_data():
     except:
         pg_df = pd.DataFrame()
 
-    # -------- ROOMS (FROM SHEET1) --------
+    # -------- ROOMS FROM SHEET1 --------
     if not pg_df.empty:
         rooms_df = pd.DataFrame({
             "pg_id": pg_df["pg_id"].astype(str).str.strip(),
             "pg_name": pg_df["pg_name"],
-            "room_no": [f"10{i+1}" for i in range(len(pg_df))],  # auto room numbers
-            "floor": 0,
+            "room_no": [f"10{i+1}" for i in range(len(pg_df))],
+            "floor": pd.to_numeric(pg_df.get("floor", 0), errors="coerce").fillna(0).astype(int),
             "sharing": 2,
             "available_beds": 2,
             "total_beds": 2
@@ -123,7 +123,6 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # CREATE OWNER
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df["pg_name"].dropna().unique().tolist()
@@ -164,12 +163,36 @@ elif st.session_state.role == "owner":
 
     st.title(f"🏠 {pg_name}")
 
-    # FILTER ROOMS FROM SHEET1
+    # -------- ROOMS --------
     owner_rooms = rooms_df[rooms_df["pg_id"] == pg_id]
 
     st.subheader("🛏 Rooms")
     st.dataframe(owner_rooms, use_container_width=True)
 
+    # -------- ADD ROOM --------
+    st.subheader("➕ Add Room")
+
+    new_floor = st.number_input("Floor", 0)
+    new_room = st.text_input("Room Number")
+
+    if st.button("Add Room"):
+
+        client = get_client()
+        sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
+
+        sheet.append_row([
+            pg_id,
+            pg_name,
+            "",  # location
+            "",  # phone
+            new_floor
+        ])
+
+        st.success("Room Added ✅")
+        st.cache_data.clear()
+        st.rerun()
+
+    # -------- BOOKINGS --------
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty:
