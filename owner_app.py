@@ -34,7 +34,7 @@ def load_data():
     # Sheet1
     df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
 
-    # Owners (safe)
+    # Owners SAFE LOAD
     try:
         owners_ws = sheet.worksheet("Owners")
     except:
@@ -50,10 +50,15 @@ def load_data():
     if not owners.empty:
         owners.columns = [str(c).strip().lower().replace(" ", "_") for c in owners.columns]
 
-        owners["username"] = owners.get("username", "").astype(str).str.strip().str.lower()
-        owners["password"] = owners.get("password", "").astype(str).str.strip()
-        owners["pg_id"] = owners.get("pg_id", "").astype(str).str.strip()
-        owners["pg_name"] = owners.get("pg_name", "").astype(str).str.strip()
+        # ensure required columns exist
+        for col in ["username","password","pg_id","pg_name"]:
+            if col not in owners.columns:
+                owners[col] = ""
+
+        owners["username"] = owners["username"].astype(str).str.strip().str.lower()
+        owners["password"] = owners["password"].astype(str).str.strip()
+        owners["pg_id"] = owners["pg_id"].astype(str).str.strip()
+        owners["pg_name"] = owners["pg_name"].astype(str).str.strip()
 
     return df, owners
 
@@ -87,9 +92,17 @@ if not st.session_state.login:
                 st.error("❌ Invalid Admin")
 
         else:
+            if owners_df.empty:
+                st.error("❌ Owners sheet empty")
+                st.stop()
+
+            if "username" not in owners_df.columns or "password" not in owners_df.columns:
+                st.error(f"❌ Column issue: {owners_df.columns.tolist()}")
+                st.stop()
+
             user = owners_df[
-                (owners_df.get("username","").astype(str).str.strip().str.lower() == username.strip().lower()) &
-                (owners_df.get("password","").astype(str).str.strip() == password.strip())
+                (owners_df["username"] == username.strip().lower()) &
+                (owners_df["password"] == password.strip())
             ]
 
             if not user.empty:
