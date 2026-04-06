@@ -82,7 +82,6 @@ def update_pg_summary(pg_id, pg_name):
         total_beds = int(pg_rooms["total_beds"].sum())
         available_beds = int(pg_rooms["available_beds"].sum())
 
-    # Since Sheet1 is room-wise → just append/update summary row
     pg_sheet.append_row([
         pg_id,
         pg_name,
@@ -202,21 +201,21 @@ elif st.session_state.role == "owner":
     # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
-    # CLEAN + UNIQUE PG LIST
-    if not pg_df.empty:
-        pg_df.columns = pg_df.columns.str.strip().str.lower().str.replace(" ", "_")
-
-        pg_df = pg_df.dropna(subset=["pg_id", "pg_name"])
-
-        pg_unique = pg_df.drop_duplicates(subset=["pg_id"])
-
-        pg_display = pg_unique["pg_name"].tolist()
-    else:
-        pg_display = []
-
-    if len(pg_display) == 0:
-        st.error("❌ No PG found in Sheet1")
+    if pg_df.empty:
+        st.error("❌ Sheet1 is empty")
         st.stop()
+
+    required_cols = ["pg_id", "pg_name", "room_no", "floor", "total_beds", "available_beds"]
+
+    for col in required_cols:
+        if col not in pg_df.columns:
+            st.error(f"❌ Missing column: {col}")
+            st.stop()
+
+    pg_df = pg_df.dropna(subset=["pg_id", "pg_name"])
+
+    pg_unique = pg_df.drop_duplicates(subset=["pg_id"])
+    pg_display = pg_unique["pg_name"].tolist()
 
     selected_pg_name = st.selectbox("Select PG", pg_display)
 
@@ -225,15 +224,17 @@ elif st.session_state.role == "owner":
     pg_id = selected_pg_row["pg_id"]
     pg_name = selected_pg_row["pg_name"]
 
-    new_room = st.text_input("Room Number")
-    new_floor = st.number_input("Floor", 0)
+    pg_rooms = pg_df[pg_df["pg_id"] == pg_id]
 
-    new_sharing = 4
-    new_total = 4
-    new_available = st.number_input("Available Beds", 0, 4, value=4)
+    room_options = pg_rooms["room_no"].dropna().astype(str).unique().tolist()
+    floor_options = pg_rooms["floor"].dropna().unique().tolist()
+    total_options = pg_rooms["total_beds"].dropna().unique().tolist()
+    avail_options = pg_rooms["available_beds"].dropna().unique().tolist()
 
-    st.write(f"Sharing: {new_sharing} (Fixed)")
-    st.write(f"Total Beds: {new_total} (Fixed)")
+    new_room = st.selectbox("Room Number", room_options)
+    new_floor = st.selectbox("Floor", floor_options)
+    new_total = st.selectbox("Total Beds", total_options)
+    new_available = st.selectbox("Available Beds", avail_options)
 
     if st.button("Add Room"):
 
@@ -244,7 +245,7 @@ elif st.session_state.role == "owner":
             pg_name,
             new_room,
             new_floor,
-            new_sharing,
+            "",  # sharing removed
             new_total,
             new_available,
             datetime.now().strftime("%Y-%m-%d %H:%M")
