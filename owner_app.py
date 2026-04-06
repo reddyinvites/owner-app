@@ -31,26 +31,33 @@ def load_data():
     client = get_client()
     sheet = client.open_by_key(PG_DATA_ID)
 
-    # Sheet1
+    # -------- Sheet1 --------
     df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
 
-    # Owners SAFE LOAD
+    # -------- Owners (SAFE LOAD + HEADER FIX) --------
     try:
         owners_ws = sheet.worksheet("Owners")
     except:
         owners_ws = sheet.add_worksheet(title="Owners", rows=1000, cols=4)
         owners_ws.append_row(["username","password","pg_id","pg_name"])
 
-    owners = pd.DataFrame(owners_ws.get_all_records())
+    raw = owners_ws.get_all_values()
+
+    if len(raw) <= 1:
+        owners = pd.DataFrame(columns=["username","password","pg_id","pg_name"])
+    else:
+        headers = [str(h).strip().lower().replace(" ", "_") for h in raw[0]]
+
+        # 🔥 auto-fix wrong column names
+        headers = ["username" if h in ["sername","user_name"] else h for h in headers]
+
+        owners = pd.DataFrame(raw[1:], columns=headers)
 
     # -------- CLEAN --------
     if not df.empty:
         df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
 
     if not owners.empty:
-        owners.columns = [str(c).strip().lower().replace(" ", "_") for c in owners.columns]
-
-        # ensure required columns exist
         for col in ["username","password","pg_id","pg_name"]:
             if col not in owners.columns:
                 owners[col] = ""
@@ -92,14 +99,6 @@ if not st.session_state.login:
                 st.error("❌ Invalid Admin")
 
         else:
-            if owners_df.empty:
-                st.error("❌ Owners sheet empty")
-                st.stop()
-
-            if "username" not in owners_df.columns or "password" not in owners_df.columns:
-                st.error(f"❌ Column issue: {owners_df.columns.tolist()}")
-                st.stop()
-
             user = owners_df[
                 (owners_df["username"] == username.strip().lower()) &
                 (owners_df["password"] == password.strip())
