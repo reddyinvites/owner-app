@@ -6,7 +6,7 @@ from google.oauth2.service_account import Credentials
 # ---------------- CONFIG ----------------
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
-st.set_page_config(page_title="PG Room Manager", layout="centered")
+st.set_page_config(page_title="PG System", layout="centered")
 
 # ---------------- GOOGLE ----------------
 scope = [
@@ -22,82 +22,93 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-# ---------------- LOAD ----------------
 @st.cache_data(ttl=60)
 def load_data():
-    client = get_client()
     df = pd.DataFrame(
-        client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
+        get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
     )
-
     if not df.empty:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
-
     return df
 
 df = load_data()
 
-# ---------------- UI ----------------
-st.title("🏠 PG Room Manager")
+# ---------------- LOGIN MOCK ----------------
+# Replace with your real login
+role = st.sidebar.selectbox("Login As", ["Admin", "Owner"])
 
+# ---------------- MENU ----------------
+if role == "Admin":
+    menu = st.sidebar.radio("📂 Menu", ["Admin Dashboard", "Room Manager"])
+else:
+    menu = "Room Manager"
+
+# ---------------- COMMON ----------------
 if df.empty:
-    st.error("❌ Sheet1 is empty")
+    st.error("❌ Sheet1 empty")
     st.stop()
 
-required_cols = ["pg_id","pg_name","room_no","floor","sharing_type","total_beds","available_beds"]
-for col in required_cols:
-    if col not in df.columns:
-        st.error(f"❌ Missing column: {col}")
-        st.stop()
-
-# -------- PG SELECT --------
 pg_unique = df.drop_duplicates(subset=["pg_id"])
 pg_names = pg_unique["pg_name"].tolist()
 
 selected_pg = st.selectbox("Select PG", pg_names)
-
-pg_row = pg_unique[pg_unique["pg_name"] == selected_pg].iloc[0]
-pg_id = pg_row["pg_id"]
+pg_id = pg_unique[pg_unique["pg_name"] == selected_pg].iloc[0]["pg_id"]
 
 pg_rooms = df[df["pg_id"] == pg_id]
 
-# -------- SIDEBAR MENU --------
-menu = st.sidebar.radio("📂 Menu", ["Dashboard", "Update Room"])
+# =====================================================
+# 🛠 ADMIN DASHBOARD (OLD SYSTEM KEPT)
+# =====================================================
+if menu == "Admin Dashboard":
+
+    st.title("🛠 Admin Dashboard")
+
+    st.subheader("🏠 PG Summary")
+
+    summary = pg_rooms.groupby("pg_name")[["total_beds", "available_beds"]].sum().reset_index()
+
+    st.dataframe(summary, use_container_width=True)
+
+    st.subheader("📋 All Rooms")
+
+    st.dataframe(pg_rooms, use_container_width=True)
 
 # =====================================================
-# 🔹 DASHBOARD
+# 🏠 ROOM MANAGER (NEW SYSTEM)
 # =====================================================
-if menu == "Dashboard":
+elif menu == "Room Manager":
 
+    st.title("🏠 Room Manager")
+
+    # -------- DASHBOARD --------
     st.subheader("📊 Dashboard")
 
     total_rooms = len(pg_rooms)
-    total_beds_sum = int(pg_rooms["total_beds"].sum())
-    available_beds_sum = int(pg_rooms["available_beds"].sum())
+    total_beds = int(pg_rooms["total_beds"].sum())
+    available = int(pg_rooms["available_beds"].sum())
 
-    occupied = total_beds_sum - available_beds_sum
-    occupancy = int((occupied / total_beds_sum) * 100) if total_beds_sum else 0
+    occupied = total_beds - available
+    occupancy = int((occupied / total_beds) * 100) if total_beds else 0
 
     c1, c2, c3 = st.columns(3)
     c1.metric("🏠 Rooms", total_rooms)
-    c2.metric("🛏 Beds", total_beds_sum)
+    c2.metric("🛏 Beds", total_beds)
     c3.metric("📉 Occupancy", f"{occupancy}%")
 
     st.progress(occupancy / 100)
 
-    # -------- ROOM LIST --------
+    # -------- ROOMS --------
     st.subheader("🛏 Rooms")
 
     for _, row in pg_rooms.iterrows():
 
         total = int(row["total_beds"])
-        available = int(row["available_beds"])
+        avail = int(row["available_beds"])
 
-        # ✅ FIXED LOGIC
-        if available == total:
+        if avail == total:
             status = "🔴 FULL"
             color = "red"
-        elif available == 0:
+        elif avail == 0:
             status = "⚪ Empty"
             color = "gray"
         else:
@@ -105,19 +116,14 @@ if menu == "Dashboard":
             color = "green"
 
         c1, c2, c3 = st.columns([2,2,2])
-
-        c1.markdown(f"**Room: {row['room_no']}**")
+        c1.write(f"Room: {row['room_no']}")
         c2.write(f"Floor: {row['floor']}")
         c3.markdown(
-            f"<span style='color:{color};'>{available}/{total} Beds ({status})</span>",
+            f"<span style='color:{color}'>{avail}/{total} Beds ({status})</span>",
             unsafe_allow_html=True
         )
 
-# =====================================================
-# 🔹 UPDATE ROOM
-# =====================================================
-elif menu == "Update Room":
-
+    # -------- UPDATE ROOM --------
     st.subheader("➕ Update Room")
 
     room_options = pg_rooms["room_no"].astype(str).tolist()
@@ -125,20 +131,15 @@ elif menu == "Update Room":
 
     room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
 
-    # -------- AUTO FILL --------
     floor = int(room_data["floor"])
     st.write(f"Floor: {floor}")
 
-    sharing_text = str(room_data["sharing_type"])
-    sharing = int(sharing_text.split()[0])
-
+    sharing = int(str(room_data["sharing_type"]).split()[0])
     st.write(f"Sharing: {sharing} Sharing")
 
-    # -------- FULL CHECK --------
     is_full = int(room_data["available_beds"]) == int(room_data["total_beds"])
 
-    # -------- EDITABLE --------
-    total_beds = st.number_input(
+    total_input = st.number_input(
         "Total Beds",
         1,
         sharing,
@@ -146,59 +147,44 @@ elif menu == "Update Room":
         disabled=is_full
     )
 
-    available_beds = st.number_input(
+    avail_input = st.number_input(
         "Available Beds",
         0,
-        total_beds,
+        total_input,
         value=int(room_data["available_beds"]),
         disabled=is_full
     )
 
     if is_full:
-        st.error("🚫 Room is FULL - Editing Disabled")
+        st.error("🚫 Room FULL - Editing Disabled")
 
-    # -------- SAVE --------
     if st.button("Save Room", disabled=is_full):
-
-        if available_beds > total_beds:
-            st.error("❌ Available beds cannot exceed total beds")
-            st.stop()
 
         sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1")
 
-        all_data = sheet.get_all_records()
-        df_sheet = pd.DataFrame(all_data)
+        data = sheet.get_all_records()
+        df_sheet = pd.DataFrame(data)
         df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
 
-        match_index = None
         for i, r in df_sheet.iterrows():
-            if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == str(selected_room):
-                match_index = i + 2
-                break
+            if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == selected_room:
 
-        if match_index:
+                headers = sheet.row_values(1)
+                headers = [h.strip().lower().replace(" ", "_") for h in headers]
 
-            headers = sheet.row_values(1)
-            headers = [h.strip().lower().replace(" ", "_") for h in headers]
+                total_col = headers.index("total_beds") + 1
+                avail_col = headers.index("available_beds") + 1
 
-            total_col = headers.index("total_beds") + 1
-            avail_col = headers.index("available_beds") + 1
+                def col_letter(n):
+                    s = ""
+                    while n > 0:
+                        n, r = divmod(n - 1, 26)
+                        s = chr(65 + r) + s
+                    return s
 
-            def col_letter(n):
-                res = ""
-                while n > 0:
-                    n, r = divmod(n - 1, 26)
-                    res = chr(65 + r) + res
-                return res
+                sheet.update(f"{col_letter(total_col)}{i+2}", [[int(total_input)]])
+                sheet.update(f"{col_letter(avail_col)}{i+2}", [[int(avail_input)]])
 
-            # ✅ FIXED UPDATE
-            sheet.update(f"{col_letter(total_col)}{match_index}", [[int(total_beds)]])
-            sheet.update(f"{col_letter(avail_col)}{match_index}", [[int(available_beds)]])
-
-            st.success("✅ Updated Successfully")
-
-        else:
-            st.error("❌ Room not found")
-
-        st.cache_data.clear()
-        st.rerun()
+                st.success("✅ Updated Successfully")
+                st.cache_data.clear()
+                st.rerun()
