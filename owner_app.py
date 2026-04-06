@@ -34,34 +34,22 @@ def load_data():
     # -------- Sheet1 --------
     df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
 
-    # -------- Owners (SAFE LOAD + HEADER FIX) --------
-    try:
-        owners_ws = sheet.worksheet("Owners")
-    except:
-        owners_ws = sheet.add_worksheet(title="Owners", rows=1000, cols=4)
-        owners_ws.append_row(["username","password","pg_id","pg_name"])
+    if not df.empty:
+        df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
+    # -------- Owners (SAFE + CLEAN) --------
+    owners_ws = sheet.worksheet("Owners")
     raw = owners_ws.get_all_values()
 
     if len(raw) <= 1:
         owners = pd.DataFrame(columns=["username","password","pg_id","pg_name"])
     else:
-        headers = [str(h).strip().lower().replace(" ", "_") for h in raw[0]]
+        headers = [h.strip().lower().replace(" ", "_") for h in raw[0]]
+        data = raw[1:]
 
-        # 🔥 auto-fix wrong column names
-        headers = ["username" if h in ["sername","user_name"] else h for h in headers]
+        owners = pd.DataFrame(data, columns=headers)
 
-        owners = pd.DataFrame(raw[1:], columns=headers)
-
-    # -------- CLEAN --------
-    if not df.empty:
-        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
-
-    if not owners.empty:
-        for col in ["username","password","pg_id","pg_name"]:
-            if col not in owners.columns:
-                owners[col] = ""
-
+        # CLEAN VALUES
         owners["username"] = owners["username"].astype(str).str.strip().str.lower()
         owners["password"] = owners["password"].astype(str).str.strip()
         owners["pg_id"] = owners["pg_id"].astype(str).str.strip()
@@ -99,6 +87,11 @@ if not st.session_state.login:
                 st.error("❌ Invalid Admin")
 
         else:
+            if owners_df.empty:
+                st.error("❌ Owners sheet empty")
+                st.stop()
+
+            # ✅ FINAL LOGIN FIX
             user = owners_df[
                 (owners_df["username"] == username.strip().lower()) &
                 (owners_df["password"] == password.strip())
@@ -128,7 +121,7 @@ else:
     pg_unique = df.drop_duplicates(subset=["pg_id"])
     pg_names = pg_unique["pg_name"].tolist()
 
-    # OWNER → only their PG
+    # OWNER VIEW
     if st.session_state.role == "owner":
         owner_row = owners_df[
             owners_df["username"] == st.session_state.username
@@ -152,9 +145,7 @@ else:
     else:
         menu = "Room Manager"
 
-    # =====================================================
-    # 🛠 ADMIN DASHBOARD
-    # =====================================================
+    # ---------------- ADMIN ----------------
     if menu == "Admin Dashboard":
 
         st.title("🛠 Admin Dashboard")
@@ -168,19 +159,13 @@ else:
 
         st.subheader("➕ Create Owner")
 
-        selected_pg_owner = st.selectbox("Select PG", pg_names, key="owner_pg")
+        selected_pg_owner = st.selectbox("Select PG", pg_names)
         new_user = st.text_input("Username")
         new_pass = st.text_input("Password")
 
         if st.button("Create Owner"):
 
-            sheet_file = get_client().open_by_key(PG_DATA_ID)
-
-            try:
-                sheet = sheet_file.worksheet("Owners")
-            except:
-                sheet = sheet_file.add_worksheet(title="Owners", rows=1000, cols=4)
-                sheet.append_row(["username","password","pg_id","pg_name"])
+            sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Owners")
 
             pg_row = pg_unique[pg_unique["pg_name"] == selected_pg_owner].iloc[0]
 
@@ -193,14 +178,10 @@ else:
 
             st.success("✅ Owner Created")
 
-    # =====================================================
-    # 🏠 ROOM MANAGER
-    # =====================================================
+    # ---------------- ROOM MANAGER ----------------
     elif menu == "Room Manager":
 
         st.title("🏠 Room Manager")
-
-        st.subheader("📊 Dashboard")
 
         total_rooms = len(pg_rooms)
         total_beds = int(pg_rooms["total_beds"].sum())
@@ -210,67 +191,40 @@ else:
         occupancy = int((occupied / total_beds) * 100) if total_beds else 0
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("🏠 Rooms", total_rooms)
-        c2.metric("🛏 Beds", total_beds)
-        c3.metric("📉 Occupancy", f"{occupancy}%")
+        c1.metric("Rooms", total_rooms)
+        c2.metric("Beds", total_beds)
+        c3.metric("Occupancy", f"{occupancy}%")
 
         st.progress(occupancy / 100)
 
         st.subheader("🛏 Rooms")
 
         for _, row in pg_rooms.iterrows():
-
             total = int(row["total_beds"])
             avail = int(row["available_beds"])
 
             if avail == 0:
-                status = "🔴 FULL"
-                color = "red"
+                st.error(f"Room {row['room_no']} → FULL")
             else:
-                status = "🟢 Available"
-                color = "green"
-
-            c1, c2, c3 = st.columns([2,2,2])
-            c1.write(f"Room: {row['room_no']}")
-            c2.write(f"Floor: {row['floor']}")
-            c3.markdown(
-                f"<span style='color:{color}'>{avail}/{total} Beds ({status})</span>",
-                unsafe_allow_html=True
-            )
+                st.success(f"Room {row['room_no']} → {avail}/{total} Available")
 
         st.subheader("➕ Update Room")
 
         room_options = pg_rooms["room_no"].astype(str).tolist()
-        selected_room = st.selectbox("Room Number", room_options)
+        selected_room = st.selectbox("Room", room_options)
 
         room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
 
-        floor = int(room_data["floor"])
-        st.write(f"Floor: {floor}")
-
-        sharing = int(str(room_data["sharing_type"]).split()[0])
-        st.write(f"Sharing: {sharing} Sharing")
+        st.write(f"Floor: {room_data['floor']}")
+        st.write(f"Sharing: {room_data['sharing_type']}")
 
         is_full = int(room_data["available_beds"]) == 0
 
-        total_input = st.number_input(
-            "Total Beds",
-            1,
-            sharing,
-            value=int(room_data["total_beds"]),
-            disabled=is_full
-        )
+        total_input = st.number_input("Total Beds", 1, int(room_data["sharing_type"].split()[0]),
+                                      value=int(room_data["total_beds"]), disabled=is_full)
 
-        avail_input = st.number_input(
-            "Available Beds",
-            0,
-            total_input,
-            value=int(room_data["available_beds"]),
-            disabled=is_full
-        )
-
-        if is_full:
-            st.error("🚫 Room FULL - Editing Disabled")
+        avail_input = st.number_input("Available Beds", 0, total_input,
+                                      value=int(room_data["available_beds"]), disabled=is_full)
 
         if st.button("Save Room", disabled=is_full):
 
@@ -278,7 +232,7 @@ else:
 
             data = sheet.get_all_records()
             df_sheet = pd.DataFrame(data)
-            df_sheet.columns = [str(c).strip().lower().replace(" ", "_") for c in df_sheet.columns]
+            df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
 
             for i, r in df_sheet.iterrows():
                 if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == selected_room:
@@ -299,6 +253,6 @@ else:
                     sheet.update(f"{col_letter(total_col)}{i+2}", [[int(total_input)]])
                     sheet.update(f"{col_letter(avail_col)}{i+2}", [[int(avail_input)]])
 
-                    st.success("✅ Updated Successfully")
+                    st.success("✅ Updated")
                     st.cache_data.clear()
                     st.rerun()
