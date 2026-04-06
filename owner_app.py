@@ -29,39 +29,42 @@ def get_client():
 def load_data():
     client = get_client()
 
-    # PG DATA
+    # -------- SHEET1 (MAIN DATA) --------
     try:
-        pg_df = pd.DataFrame(
-            client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
-        )
+        sheet1 = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
+        pg_df = pd.DataFrame(sheet1.get_all_records())
+        pg_df.columns = pg_df.columns.str.strip()
     except:
-        pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
+        pg_df = pd.DataFrame()
 
-    # APP DATA
+    # -------- ROOMS (FROM SHEET1) --------
+    if not pg_df.empty:
+        rooms_df = pd.DataFrame({
+            "pg_id": pg_df["pg_id"].astype(str).str.strip(),
+            "pg_name": pg_df["pg_name"],
+            "room_no": [f"10{i+1}" for i in range(len(pg_df))],  # auto room numbers
+            "floor": 0,
+            "sharing": 2,
+            "available_beds": 2,
+            "total_beds": 2
+        })
+    else:
+        rooms_df = pd.DataFrame()
+
+    # -------- OTHER DATA --------
     try:
         app = client.open_by_key(PG_APP_ID)
 
         owners_df = pd.DataFrame(app.worksheet("Owners").get_all_records())
-        rooms_df = pd.DataFrame(app.worksheet("rooms").get_all_records())
         bookings_df = pd.DataFrame(app.worksheet("Bookings").get_all_records())
+
+        if not owners_df.empty:
+            owners_df["username"] = owners_df["username"].astype(str).str.lower().str.strip()
+            owners_df["pg_id"] = owners_df["pg_id"].astype(str).str.strip()
+
     except:
         owners_df = pd.DataFrame()
-        rooms_df = pd.DataFrame()
         bookings_df = pd.DataFrame()
-
-    # -------- CLEAN DATA (IMPORTANT FIX) --------
-    for df in [pg_df, owners_df, rooms_df, bookings_df]:
-        if not df.empty:
-            df.columns = df.columns.str.strip()
-
-    if "pg_id" in pg_df.columns:
-        pg_df["pg_id"] = pg_df["pg_id"].astype(str).str.strip()
-
-    if "pg_id" in owners_df.columns:
-        owners_df["pg_id"] = owners_df["pg_id"].astype(str).str.strip()
-
-    if "pg_id" in rooms_df.columns:
-        rooms_df["pg_id"] = rooms_df["pg_id"].astype(str).str.strip()
 
     return pg_df, owners_df, rooms_df, bookings_df
 
@@ -96,7 +99,6 @@ if not st.session_state.login:
                 st.error("Invalid Admin ❌")
 
         else:
-            owners_df["username"] = owners_df["username"].astype(str).str.lower().str.strip()
             owners_df["password"] = owners_df["password"].astype(str).str.strip()
 
             user = owners_df[
@@ -141,74 +143,8 @@ elif st.session_state.role == "admin":
         st.cache_data.clear()
         st.rerun()
 
-    # OWNERS LIST
     st.subheader("📋 Owners List")
-
-    for i, row in owners_df.iterrows():
-        c1, c2, c3, c4, c5, c6 = st.columns([2,2,2,2,1,1])
-
-        c1.write(row.get("username",""))
-        c2.write(row.get("password",""))
-        c3.write(row.get("pg_id",""))
-        c4.write(row.get("pg_name",""))
-
-        # DELETE
-        if c5.button("❌", key=f"del_owner_{i}"):
-            client = get_client()
-            sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
-            sheet.delete_rows(i + 2)
-
-            st.cache_data.clear()
-            st.rerun()
-
-        # EDIT
-        if c6.button("✏️", key=f"edit_owner_{i}"):
-            st.session_state[f"edit_owner_{i}"] = True
-
-        if st.session_state.get(f"edit_owner_{i}", False):
-            u = st.text_input("Username", value=row["username"], key=f"u{i}")
-            p = st.text_input("Password", value=row["password"], key=f"p{i}")
-
-            if st.button("Save", key=f"s{i}"):
-                client = get_client()
-                sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
-                sheet.update(f"A{i+2}:D{i+2}", [[u.strip(), p.strip(), row["pg_id"], row["pg_name"]]])
-
-                st.cache_data.clear()
-                st.rerun()
-
-    # PG LIST
-    st.subheader("🏠 All PGs")
-
-    for i, row in pg_df.iterrows():
-        c1, c2, c3, c4 = st.columns([3,2,1,1])
-
-        c1.write(row.get("pg_name",""))
-        c2.write(row.get("pg_id",""))
-
-        # DELETE PG
-        if c3.button("❌", key=f"del_pg_{i}"):
-            client = get_client()
-            sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
-            sheet.delete_rows(i + 2)
-
-            st.cache_data.clear()
-            st.rerun()
-
-        # EDIT PG
-        if c4.button("✏️", key=f"edit_pg_{i}"):
-            st.session_state[f"edit_pg_{i}"] = True
-
-        if st.session_state.get(f"edit_pg_{i}", False):
-            name = st.text_input("PG Name", value=row["pg_name"], key=f"pg{i}")
-
-            if st.button("Save PG", key=f"spg{i}"):
-                client = get_client()
-                sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
-                sheet.update(f"B{i+2}", name.strip())
-
-                st.cache_data.clear()
-                st.rerun()
+    st.dataframe(owners_df, use_container_width=True)
 
 # ---------------- OWNER ----------------
 elif st.session_state.role == "owner":
@@ -216,8 +152,6 @@ elif st.session_state.role == "owner":
     if st.button("Logout"):
         st.session_state.clear()
         st.rerun()
-
-    owners_df["username"] = owners_df["username"].astype(str).str.lower().str.strip()
 
     owner = owners_df[owners_df["username"] == st.session_state.username]
 
@@ -230,42 +164,12 @@ elif st.session_state.role == "owner":
 
     st.title(f"🏠 {pg_name}")
 
-    # CLEAN AGAIN (SAFE)
-    if "pg_id" in rooms_df.columns:
-        rooms_df["pg_id"] = rooms_df["pg_id"].astype(str).str.strip()
-
+    # FILTER ROOMS FROM SHEET1
     owner_rooms = rooms_df[rooms_df["pg_id"] == pg_id]
-
-    # AUTO CREATE ROOM
-    if owner_rooms.empty:
-        client = get_client()
-        sheet = client.open_by_key(PG_APP_ID).worksheet("rooms")
-        sheet.append_row([pg_id, pg_name, "101", 0, 2, 2, 2])
-
-        st.cache_data.clear()
-        st.rerun()
 
     st.subheader("🛏 Rooms")
     st.dataframe(owner_rooms, use_container_width=True)
 
-    # ADD ROOM
-    st.subheader("➕ Add Room")
-
-    r = st.text_input("Room No")
-    f = st.number_input("Floor", 0)
-    s = st.selectbox("Sharing", [1,2,3,4])
-    t = st.number_input("Total Beds", 1, s)
-    a = st.number_input("Available Beds", 0, t)
-
-    if st.button("Add Room"):
-        client = get_client()
-        sheet = client.open_by_key(PG_APP_ID).worksheet("rooms")
-        sheet.append_row([pg_id, pg_name, r, f, s, a, t])
-
-        st.cache_data.clear()
-        st.rerun()
-
-    # BOOKINGS
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty:
