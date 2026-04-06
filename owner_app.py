@@ -29,6 +29,7 @@ def get_client():
 def load_data():
     client = get_client()
 
+    # -------- MAIN SHEET --------
     try:
         sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
         df = pd.DataFrame(sheet.get_all_records())
@@ -36,13 +37,21 @@ def load_data():
     except:
         df = pd.DataFrame()
 
-    # CLEAN DATA
-    if not df.empty:
-        df["pg_id"] = df["pg_id"].astype(str).str.strip()
+    # -------- OWNERS SHEET --------
+    try:
+        app = client.open_by_key(PG_APP_ID)
+        owners_df = pd.DataFrame(app.worksheet("Owners").get_all_records())
 
-    return df
+        owners_df["username"] = owners_df["username"].astype(str).str.lower().str.strip()
+        owners_df["password"] = owners_df["password"].astype(str).str.strip()
+        owners_df["pg_id"] = owners_df["pg_id"].astype(str).str.strip()
+    except:
+        owners_df = pd.DataFrame()
 
-df = load_data()
+    return df, owners_df
+
+# ---------------- LOAD ----------------
+df, owners_df = load_data()
 
 # ---------------- SESSION ----------------
 if "login" not in st.session_state:
@@ -72,15 +81,15 @@ if not st.session_state.login:
                 st.error("Invalid Admin ❌")
 
         else:
-            # OWNER LOGIN FROM SHEET
-            user = df[
-                (df["pg_name"].str.lower() == username.lower())  # simple login
+            user = owners_df[
+                (owners_df["username"] == username.lower().strip()) &
+                (owners_df["password"] == password.strip())
             ]
 
             if not user.empty:
                 st.session_state.login = True
                 st.session_state.role = "owner"
-                st.session_state.username = username
+                st.session_state.username = username.lower().strip()
                 st.rerun()
             else:
                 st.error("Invalid Owner ❌")
@@ -94,6 +103,7 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
+    st.subheader("📊 All Data")
     st.dataframe(df, use_container_width=True)
 
 # ---------------- OWNER ----------------
@@ -103,16 +113,20 @@ elif st.session_state.role == "owner":
         st.session_state.clear()
         st.rerun()
 
-    owner_df = df[df["pg_name"].str.lower() == st.session_state.username.lower()]
+    owner = owners_df[owners_df["username"] == st.session_state.username]
 
-    if owner_df.empty:
-        st.error("No data found ❌")
+    if owner.empty:
+        st.error("Owner not found ❌")
         st.stop()
 
-    pg_id = owner_df.iloc[0]["pg_id"]
-    pg_name = owner_df.iloc[0]["pg_name"]
+    pg_id = owner.iloc[0]["pg_id"]
+    pg_name = owner.iloc[0]["pg_name"]
 
     st.title(f"🏠 {pg_name}")
+
+    # FILTER ROOMS
+    df["pg_id"] = df["pg_id"].astype(str).str.strip()
+    owner_df = df[df["pg_id"] == pg_id]
 
     # ---------------- ROOMS ----------------
     st.subheader("🛏 Rooms")
