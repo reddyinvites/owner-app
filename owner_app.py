@@ -61,125 +61,144 @@ pg_id = pg_row["pg_id"]
 
 pg_rooms = df[df["pg_id"] == pg_id]
 
-# ---------------- DASHBOARD ----------------
-st.subheader("📊 Dashboard")
+# -------- SIDEBAR MENU --------
+menu = st.sidebar.radio("📂 Menu", ["Dashboard", "Update Room"])
 
-total_rooms = len(pg_rooms)
-total_beds_sum = int(pg_rooms["total_beds"].sum())
-available_beds_sum = int(pg_rooms["available_beds"].sum())
+# =====================================================
+# 🔹 DASHBOARD
+# =====================================================
+if menu == "Dashboard":
 
-occupied = total_beds_sum - available_beds_sum
-occupancy = int((occupied / total_beds_sum) * 100) if total_beds_sum else 0
+    st.subheader("📊 Dashboard")
 
-c1, c2, c3 = st.columns(3)
-c1.metric("🏠 Rooms", total_rooms)
-c2.metric("🛏 Beds", total_beds_sum)
-c3.metric("📉 Occupancy", f"{occupancy}%")
+    total_rooms = len(pg_rooms)
+    total_beds_sum = int(pg_rooms["total_beds"].sum())
+    available_beds_sum = int(pg_rooms["available_beds"].sum())
 
-st.progress(occupancy / 100)
+    occupied = total_beds_sum - available_beds_sum
+    occupancy = int((occupied / total_beds_sum) * 100) if total_beds_sum else 0
 
-# ---------------- ROOM LIST ----------------
-st.subheader("🛏 Rooms")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("🏠 Rooms", total_rooms)
+    c2.metric("🛏 Beds", total_beds_sum)
+    c3.metric("📉 Occupancy", f"{occupancy}%")
 
-for _, row in pg_rooms.iterrows():
-    total = int(row["total_beds"])
-    available = int(row["available_beds"])
+    st.progress(occupancy / 100)
 
-    if available == 0:
-        status = "🔴 FULL"
-        color = "red"
-    else:
-        status = "🟢 Available"
-        color = "green"
+    # -------- ROOM LIST --------
+    st.subheader("🛏 Rooms")
 
-    c1, c2, c3 = st.columns([2,2,2])
-    c1.markdown(f"**Room: {row['room_no']}**")
-    c2.write(f"Floor: {row['floor']}")
-    c3.markdown(
-        f"<span style='color:{color};'>{available}/{total} Beds ({status})</span>",
-        unsafe_allow_html=True
+    for _, row in pg_rooms.iterrows():
+
+        total = int(row["total_beds"])
+        available = int(row["available_beds"])
+
+        # ✅ FIXED LOGIC
+        if available == total:
+            status = "🔴 FULL"
+            color = "red"
+        elif available == 0:
+            status = "⚪ Empty"
+            color = "gray"
+        else:
+            status = "🟢 Available"
+            color = "green"
+
+        c1, c2, c3 = st.columns([2,2,2])
+
+        c1.markdown(f"**Room: {row['room_no']}**")
+        c2.write(f"Floor: {row['floor']}")
+        c3.markdown(
+            f"<span style='color:{color};'>{available}/{total} Beds ({status})</span>",
+            unsafe_allow_html=True
+        )
+
+# =====================================================
+# 🔹 UPDATE ROOM
+# =====================================================
+elif menu == "Update Room":
+
+    st.subheader("➕ Update Room")
+
+    room_options = pg_rooms["room_no"].astype(str).tolist()
+    selected_room = st.selectbox("Room Number", room_options)
+
+    room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
+
+    # -------- AUTO FILL --------
+    floor = int(room_data["floor"])
+    st.write(f"Floor: {floor}")
+
+    sharing_text = str(room_data["sharing_type"])
+    sharing = int(sharing_text.split()[0])
+
+    st.write(f"Sharing: {sharing} Sharing")
+
+    # -------- FULL CHECK --------
+    is_full = int(room_data["available_beds"]) == int(room_data["total_beds"])
+
+    # -------- EDITABLE --------
+    total_beds = st.number_input(
+        "Total Beds",
+        1,
+        sharing,
+        value=int(room_data["total_beds"]),
+        disabled=is_full
     )
 
-# ---------------- UPDATE ROOM ----------------
-st.subheader("➕ Update Room")
+    available_beds = st.number_input(
+        "Available Beds",
+        0,
+        total_beds,
+        value=int(room_data["available_beds"]),
+        disabled=is_full
+    )
 
-room_options = pg_rooms["room_no"].astype(str).tolist()
-selected_room = st.selectbox("Room Number", room_options)
+    if is_full:
+        st.error("🚫 Room is FULL - Editing Disabled")
 
-room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
+    # -------- SAVE --------
+    if st.button("Save Room", disabled=is_full):
 
-# Auto-fill
-floor = int(room_data["floor"])
-st.write(f"Floor: {floor}")
+        if available_beds > total_beds:
+            st.error("❌ Available beds cannot exceed total beds")
+            st.stop()
 
-sharing_text = str(room_data["sharing_type"])
-sharing = int(sharing_text.split()[0])
+        sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1")
 
-st.write(f"Sharing: {sharing} Sharing")
+        all_data = sheet.get_all_records()
+        df_sheet = pd.DataFrame(all_data)
+        df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
 
-# Check FULL
-is_full = int(room_data["available_beds"]) == 0
+        match_index = None
+        for i, r in df_sheet.iterrows():
+            if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == str(selected_room):
+                match_index = i + 2
+                break
 
-# Editable
-total_beds = st.number_input(
-    "Total Beds",
-    1,
-    sharing,
-    value=int(room_data["total_beds"]),
-    disabled=is_full
-)
+        if match_index:
 
-available_beds = st.number_input(
-    "Available Beds",
-    0,
-    total_beds,
-    value=int(room_data["available_beds"]),
-    disabled=is_full
-)
+            headers = sheet.row_values(1)
+            headers = [h.strip().lower().replace(" ", "_") for h in headers]
 
-if is_full:
-    st.error("🚫 Room is FULL - Editing Disabled")
+            total_col = headers.index("total_beds") + 1
+            avail_col = headers.index("available_beds") + 1
 
-# ---------------- SAVE ----------------
-if st.button("Save Room", disabled=is_full):
+            def col_letter(n):
+                res = ""
+                while n > 0:
+                    n, r = divmod(n - 1, 26)
+                    res = chr(65 + r) + res
+                return res
 
-    if available_beds > total_beds:
-        st.error("❌ Available beds cannot exceed total beds")
-        st.stop()
+            # ✅ FIXED UPDATE
+            sheet.update(f"{col_letter(total_col)}{match_index}", [[int(total_beds)]])
+            sheet.update(f"{col_letter(avail_col)}{match_index}", [[int(available_beds)]])
 
-    sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1")
+            st.success("✅ Updated Successfully")
 
-    all_data = sheet.get_all_records()
-    df_sheet = pd.DataFrame(all_data)
-    df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
+        else:
+            st.error("❌ Room not found")
 
-    match_index = None
-    for i, r in df_sheet.iterrows():
-        if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == str(selected_room):
-            match_index = i + 2
-            break
-
-    if match_index:
-        headers = sheet.row_values(1)
-        headers = [h.strip().lower().replace(" ", "_") for h in headers]
-
-        total_col = headers.index("total_beds") + 1
-        avail_col = headers.index("available_beds") + 1
-
-        def col_letter(n):
-            res = ""
-            while n > 0:
-                n, r = divmod(n - 1, 26)
-                res = chr(65 + r) + res
-            return res
-
-        sheet.update(f"{col_letter(total_col)}{match_index}", [[int(total_beds)]])
-        sheet.update(f"{col_letter(avail_col)}{match_index}", [[int(available_beds)]])
-
-        st.success("✅ Updated Successfully")
-
-    else:
-        st.error("❌ Room not found")
-
-    st.cache_data.clear()
-    st.rerun()
+        st.cache_data.clear()
+        st.rerun()
