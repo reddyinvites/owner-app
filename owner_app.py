@@ -61,11 +61,11 @@ def get_sheets():
     client = get_client()
     app_file = client.open_by_key(PG_APP_ID)
 
-    return (
-        app_file.worksheet("Owners"),
-        app_file.worksheet("rooms"),
-        app_file.worksheet("Bookings")
-    )
+    owners_sheet = app_file.worksheet("Owners")
+    rooms_sheet = app_file.worksheet("rooms")
+    bookings_sheet = app_file.worksheet("Bookings")
+
+    return owners_sheet, rooms_sheet, bookings_sheet
 
 pg_df, owners_df, rooms_df, bookings_df = load_data()
 owners_sheet, rooms_sheet, bookings_sheet = get_sheets()
@@ -129,9 +129,22 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
+    # -----------------------
+    # CREATE OWNER + SEARCH
+    # -----------------------
     st.subheader("➕ Create Owner")
 
-    pg_names = pg_df["pg_name"].dropna().unique().tolist()
+    search_pg = st.text_input("🔍 Search PG (Name / ID)")
+
+    if search_pg:
+        filtered_pg = pg_df[
+            pg_df["pg_name"].str.contains(search_pg, case=False, na=False) |
+            pg_df["pg_id"].astype(str).str.contains(search_pg, na=False)
+        ]
+    else:
+        filtered_pg = pg_df
+
+    pg_names = filtered_pg["pg_name"].dropna().unique().tolist()
     selected_pg = st.selectbox("Select PG", pg_names)
 
     new_user = st.text_input("Owner Username")
@@ -139,21 +152,82 @@ elif st.session_state.role == "admin":
 
     if st.button("Create Owner"):
         if new_user and new_pass:
-            pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
+            try:
+                pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-            owners_sheet.append_row([
-                new_user.strip(),
-                new_pass.strip(),
-                pg_id,
-                selected_pg
-            ])
+                owners_sheet.append_row([
+                    new_user.strip(),
+                    new_pass.strip(),
+                    pg_id,
+                    selected_pg
+                ])
 
-            st.success("Owner Created ✅")
-            st.cache_data.clear()
-            st.rerun()
+                st.success("Owner Created ✅")
+                st.cache_data.clear()
+                st.rerun()
 
+            except Exception as e:
+                st.error(f"Error: {e}")
+        else:
+            st.error("Enter all fields ❌")
+
+    # -----------------------
+    # OWNERS LIST (UPDATE + DELETE)
+    # -----------------------
     st.subheader("📋 Owners List")
-    st.dataframe(owners_df, use_container_width=True)
+
+    if not owners_df.empty:
+
+        for i, row in owners_df.iterrows():
+
+            c1, c2, c3, c4, c5, c6 = st.columns([2,2,2,2,1,1])
+
+            username = str(row["username"]).strip()
+            password = str(row["password"]).strip()
+            pg_id = row["pg_id"]
+            pg_name = row["pg_name"]
+
+            c1.write(username)
+            new_password = c2.text_input("Password", value=password, key=f"pass_{i}")
+            c3.write(pg_id)
+            c4.write(pg_name)
+
+            # UPDATE
+            if c5.button("💾", key=f"update_{i}"):
+                try:
+                    all_values = owners_sheet.get_all_values()
+
+                    for idx, r in enumerate(all_values[1:], start=2):
+                        if r[0].strip() == username:
+                            owners_sheet.update_cell(idx, 2, new_password.strip())
+                            break
+
+                    st.success("Updated ✅")
+                    st.cache_data.clear()
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+            # DELETE
+            if c6.button("❌", key=f"delete_{i}"):
+                try:
+                    all_values = owners_sheet.get_all_values()
+
+                    for idx, r in enumerate(all_values[1:], start=2):
+                        if r[0].strip() == username:
+                            owners_sheet.delete_rows(idx)
+                            break
+
+                    st.success("Deleted ✅")
+                    st.cache_data.clear()
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    else:
+        st.info("No owners available")
 
 # -----------------------
 # OWNER DASHBOARD
@@ -174,42 +248,44 @@ elif st.session_state.role == "owner":
         st.error("Owner data missing ❌")
         st.stop()
 
-    owner_pg_id = str(owner_data.iloc[0]["pg_id"])
+    owner_pg_id = owner_data.iloc[0]["pg_id"]
     owner_pg_name = owner_data.iloc[0]["pg_name"]
 
     st.title(f"🏠 {owner_pg_name}")
 
-    # ---------------- ROOMS ----------------
+    # ROOMS
     st.subheader("🛏 Rooms")
-
-    rooms_df["pg_id"] = rooms_df["pg_id"].astype(str)
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
-
     st.dataframe(owner_rooms, use_container_width=True)
 
-    # ---------------- DELETE ROOM ----------------
+    # DELETE ROOM
     st.subheader("❌ Delete Room")
 
     if not owner_rooms.empty:
 
-        selected_room = st.selectbox(
-            "Select Room",
-            owner_rooms["room_no"].astype(str).tolist()
-        )
+        room_options = owner_rooms["room_no"].astype(str).tolist()
+        selected_room = st.selectbox("Select Room to Delete", room_options)
 
         if st.button("Delete Room"):
-            all_values = rooms_sheet.get_all_values()
+            try:
+                all_values = rooms_sheet.get_all_values()
 
-            for i, row in enumerate(all_values[1:], start=2):  # skip header
-                if str(row[2]).strip() == selected_room and str(row[0]).strip() == owner_pg_id:
-                    rooms_sheet.delete_rows(i)
-                    break
+                for i, row in enumerate(all_values[1:], start=2):
+                    if str(row[2]).strip() == selected_room and str(row[0]).strip() == str(owner_pg_id):
+                        rooms_sheet.delete_rows(i)
+                        break
 
-            st.success("Room Deleted ✅")
-            st.cache_data.clear()
-            st.rerun()
+                st.success("Room Deleted ✅")
+                st.cache_data.clear()
+                st.rerun()
 
-    # ---------------- ADD ROOM ----------------
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    else:
+        st.info("No rooms to delete")
+
+    # ADD ROOM
     st.subheader("➕ Add Room")
 
     room_no = st.text_input("Room Number")
@@ -224,28 +300,31 @@ elif st.session_state.role == "owner":
         if not room_no:
             st.error("Enter room number ❌")
         else:
-            new_row = [
-                owner_pg_id,
-                owner_pg_name,
-                room_no,
-                int(floor),
-                int(sharing),
-                int(available_beds),
-                int(total_beds),
-                pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-            ]
+            try:
+                new_row = [
+                    owner_pg_id,
+                    owner_pg_name,
+                    room_no,
+                    int(floor),
+                    int(sharing),
+                    int(available_beds),
+                    int(total_beds),
+                    pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+                ]
 
-            rooms_sheet.append_row(new_row)
+                rooms_sheet.append_row(new_row)
 
-            st.success("Room Added ✅")
-            st.cache_data.clear()
-            st.rerun()
+                st.success("Room Added ✅")
+                st.cache_data.clear()
+                st.rerun()
 
-    # ---------------- BOOKINGS ----------------
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    # BOOKINGS
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty and "pg_id" in bookings_df.columns:
-        bookings_df["pg_id"] = bookings_df["pg_id"].astype(str)
         owner_bookings = bookings_df[bookings_df["pg_id"] == owner_pg_id]
         st.dataframe(owner_bookings, use_container_width=True)
     else:
