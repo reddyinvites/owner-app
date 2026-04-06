@@ -31,13 +31,11 @@ def load_data():
     client = get_client()
     sheet = client.open_by_key(PG_DATA_ID)
 
-    # -------- Sheet1 --------
     df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
 
     if not df.empty:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-    # -------- Owners (SAFE + CLEAN) --------
     owners_ws = sheet.worksheet("Owners")
     raw = owners_ws.get_all_values()
 
@@ -45,11 +43,8 @@ def load_data():
         owners = pd.DataFrame(columns=["username","password","pg_id","pg_name"])
     else:
         headers = [h.strip().lower().replace(" ", "_") for h in raw[0]]
-        data = raw[1:]
+        owners = pd.DataFrame(raw[1:], columns=headers)
 
-        owners = pd.DataFrame(data, columns=headers)
-
-        # CLEAN VALUES
         owners["username"] = owners["username"].astype(str).str.strip().str.lower()
         owners["password"] = owners["password"].astype(str).str.strip()
         owners["pg_id"] = owners["pg_id"].astype(str).str.strip()
@@ -72,11 +67,11 @@ if not st.session_state.login:
 
     st.title("🔐 Login")
 
-    role = st.selectbox("Login as", ["Admin", "Owner"])
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    role = st.selectbox("Login as", ["Admin", "Owner"], key="login_role")
+    username = st.text_input("Username", key="login_user")
+    password = st.text_input("Password", type="password", key="login_pass")
 
-    if st.button("Login"):
+    if st.button("Login", key="login_btn"):
 
         if role == "Admin":
             if username == ADMIN_USER and password == ADMIN_PASS:
@@ -91,7 +86,6 @@ if not st.session_state.login:
                 st.error("❌ Owners sheet empty")
                 st.stop()
 
-            # ✅ FINAL LOGIN FIX
             user = owners_df[
                 (owners_df["username"] == username.strip().lower()) &
                 (owners_df["password"] == password.strip())
@@ -110,7 +104,7 @@ if not st.session_state.login:
 # =====================================================
 else:
 
-    if st.button("Logout"):
+    if st.button("Logout", key="logout"):
         st.session_state.clear()
         st.rerun()
 
@@ -133,7 +127,7 @@ else:
         st.write(f"🏠 PG: {selected_pg}")
 
     else:
-        selected_pg = st.selectbox("Select PG", pg_names)
+        selected_pg = st.selectbox("Select PG", pg_names, key="main_pg_select")
         pg_row = pg_unique[pg_unique["pg_name"] == selected_pg].iloc[0]
         pg_id = pg_row["pg_id"]
 
@@ -159,11 +153,11 @@ else:
 
         st.subheader("➕ Create Owner")
 
-        selected_pg_owner = st.selectbox("Select PG", pg_names)
-        new_user = st.text_input("Username")
-        new_pass = st.text_input("Password")
+        selected_pg_owner = st.selectbox("Select PG", pg_names, key="owner_pg_select")
+        new_user = st.text_input("Username", key="new_owner_user")
+        new_pass = st.text_input("Password", key="new_owner_pass")
 
-        if st.button("Create Owner"):
+        if st.button("Create Owner", key="create_owner_btn"):
 
             sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Owners")
 
@@ -177,6 +171,8 @@ else:
             ])
 
             st.success("✅ Owner Created")
+            st.cache_data.clear()
+            st.rerun()
 
     # ---------------- ROOM MANAGER ----------------
     elif menu == "Room Manager":
@@ -211,7 +207,7 @@ else:
         st.subheader("➕ Update Room")
 
         room_options = pg_rooms["room_no"].astype(str).tolist()
-        selected_room = st.selectbox("Room", room_options)
+        selected_room = st.selectbox("Room", room_options, key="room_select")
 
         room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
 
@@ -220,13 +216,30 @@ else:
 
         is_full = int(room_data["available_beds"]) == 0
 
-        total_input = st.number_input("Total Beds", 1, int(room_data["sharing_type"].split()[0]),
-                                      value=int(room_data["total_beds"]), disabled=is_full)
+        max_beds = int(room_data["sharing_type"].split()[0])
 
-        avail_input = st.number_input("Available Beds", 0, total_input,
-                                      value=int(room_data["available_beds"]), disabled=is_full)
+        total_input = st.number_input(
+            "Total Beds",
+            1,
+            max_beds,
+            value=int(room_data["total_beds"]),
+            disabled=is_full,
+            key="total_beds_input"
+        )
 
-        if st.button("Save Room", disabled=is_full):
+        avail_input = st.number_input(
+            "Available Beds",
+            0,
+            total_input,
+            value=int(room_data["available_beds"]),
+            disabled=is_full,
+            key="avail_beds_input"
+        )
+
+        if is_full:
+            st.warning("🚫 Room FULL - Editing Disabled")
+
+        if st.button("Save Room", disabled=is_full, key="save_room_btn"):
 
             sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1")
 
