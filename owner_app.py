@@ -237,12 +237,12 @@ elif st.session_state.role == "owner":
 
     owner = owners_df[owners_df["username"] == st.session_state.username]
 
-    pg_id = owner.iloc[0]["pg_id"]
-    pg_name = owner.iloc[0]["pg_name"]
+    pg_id_owner = owner.iloc[0]["pg_id"]
+    pg_name_owner = owner.iloc[0]["pg_name"]
 
-    st.title(f"🏠 {pg_name}")
+    st.title(f"🏠 {pg_name_owner}")
 
-    owner_rooms = rooms_df[rooms_df["pg_id"] == pg_id]
+    owner_rooms = rooms_df[rooms_df["pg_id"] == pg_id_owner]
 
     st.subheader("🛏 Rooms")
 
@@ -258,18 +258,33 @@ elif st.session_state.role == "owner":
             sheet = get_client().open_by_key(PG_APP_ID).worksheet("rooms")
             sheet.delete_rows(i + 2)
 
-            update_pg_summary(pg_id, pg_name)
+            update_pg_summary(pg_id_owner, pg_name_owner)
 
             st.cache_data.clear()
             st.rerun()
 
+    # -------- ADD ROOM (UPDATED) --------
     st.subheader("➕ Add Room")
+
+    pg_options = pg_df[["pg_id", "pg_name"]].drop_duplicates()
+    pg_display = pg_options["pg_name"].tolist()
+
+    selected_pg_name = st.selectbox("Select PG", pg_display)
+
+    selected_pg_row = pg_options[pg_options["pg_name"] == selected_pg_name].iloc[0]
+
+    pg_id = selected_pg_row["pg_id"]
+    pg_name = selected_pg_row["pg_name"]
 
     new_room = st.text_input("Room Number")
     new_floor = st.number_input("Floor", 0)
-    new_sharing = st.number_input("Sharing", 1)
-    new_total = st.number_input("Total Beds", 1)
-    new_available = st.number_input("Available Beds", 0, new_total)
+
+    new_sharing = 4
+    new_total = 4
+    new_available = st.number_input("Available Beds", 0, 4, value=4)
+
+    st.write(f"Sharing: {new_sharing} (Fixed)")
+    st.write(f"Total Beds: {new_total} (Fixed)")
 
     if st.button("Add Room"):
 
