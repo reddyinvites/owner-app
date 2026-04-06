@@ -3,9 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# -----------------------
-# CONFIG
-# -----------------------
+# ---------------- CONFIG ----------------
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
@@ -17,9 +15,7 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# -----------------------
-# CACHE CLIENT (IMPORTANT)
-# -----------------------
+# ---------------- CLIENT CACHE ----------------
 @st.cache_resource
 def get_client():
     creds = Credentials.from_service_account_info(
@@ -28,53 +24,38 @@ def get_client():
     )
     return gspread.authorize(creds)
 
-# -----------------------
-# LOAD EVERYTHING ONCE
-# -----------------------
+# ---------------- LOAD DATA (READ ONLY CACHE) ----------------
 @st.cache_data(ttl=300)
 def load_data():
     client = get_client()
 
     # PG DATA
     try:
-        pg_file = client.open_by_key(PG_DATA_ID)
-        pg_sheet = pg_file.worksheet("Sheet1")
-        pg_df = pd.DataFrame(pg_sheet.get_all_records())
+        pg_df = pd.DataFrame(
+            client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
+        )
     except:
         pg_df = pd.DataFrame(columns=["pg_id", "pg_name"])
-        pg_sheet = None
 
     # APP DATA
     try:
-        app_file = client.open_by_key(PG_APP_ID)
+        app = client.open_by_key(PG_APP_ID)
 
-        owners_sheet = app_file.worksheet("Owners")
-        rooms_sheet = app_file.worksheet("rooms")
-        bookings_sheet = app_file.worksheet("Bookings")
-
-        owners_df = pd.DataFrame(owners_sheet.get_all_records())
-        rooms_df = pd.DataFrame(rooms_sheet.get_all_records())
-        bookings_df = pd.DataFrame(bookings_sheet.get_all_records())
+        owners_df = pd.DataFrame(app.worksheet("Owners").get_all_records())
+        rooms_df = pd.DataFrame(app.worksheet("rooms").get_all_records())
+        bookings_df = pd.DataFrame(app.worksheet("Bookings").get_all_records())
 
     except:
         owners_df = pd.DataFrame()
         rooms_df = pd.DataFrame()
         bookings_df = pd.DataFrame()
-        owners_sheet = rooms_sheet = bookings_sheet = None
 
-    return (
-        pg_df, owners_df, rooms_df, bookings_df,
-        pg_sheet, owners_sheet, rooms_sheet, bookings_sheet
-    )
+    return pg_df, owners_df, rooms_df, bookings_df
 
-# -----------------------
-# LOAD
-# -----------------------
-pg_df, owners_df, rooms_df, bookings_df, pg_sheet, owners_sheet, rooms_sheet, bookings_sheet = load_data()
+# ---------------- LOAD ----------------
+pg_df, owners_df, rooms_df, bookings_df = load_data()
 
-# -----------------------
-# SESSION
-# -----------------------
+# ---------------- SESSION ----------------
 if "login" not in st.session_state:
     st.session_state.login = False
 if "role" not in st.session_state:
@@ -82,9 +63,7 @@ if "role" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = ""
 
-# -----------------------
-# LOGIN
-# -----------------------
+# ---------------- LOGIN ----------------
 if not st.session_state.login:
 
     st.title("🔐 Login")
@@ -120,9 +99,7 @@ if not st.session_state.login:
             else:
                 st.error("Invalid Owner ❌")
 
-# -----------------------
-# ADMIN DASHBOARD
-# -----------------------
+# ---------------- ADMIN ----------------
 elif st.session_state.role == "admin":
 
     st.title("🛠 Admin Dashboard")
@@ -131,7 +108,7 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # CREATE OWNER
+    # -------- CREATE OWNER --------
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df.get("pg_name", pd.Series()).dropna().unique().tolist()
@@ -140,21 +117,18 @@ elif st.session_state.role == "admin":
     new_user = st.text_input("Owner Username")
     new_pass = st.text_input("Owner Password")
 
-    if st.button("Create Owner"):
-        if new_user and new_pass and owners_sheet:
-            pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
+    if st.button("Create Owner") and new_user and new_pass:
+        client = get_client()
+        sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
 
-            owners_sheet.append_row([
-                new_user.strip(),
-                new_pass.strip(),
-                pg_id,
-                selected_pg
-            ])
+        pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
 
-            st.cache_data.clear()
-            st.rerun()
+        sheet.append_row([new_user, new_pass, pg_id, selected_pg])
 
-    # OWNERS LIST
+        st.cache_data.clear()
+        st.rerun()
+
+    # -------- OWNERS LIST --------
     st.subheader("📋 Owners List")
 
     for i, row in owners_df.iterrows():
@@ -165,11 +139,16 @@ elif st.session_state.role == "admin":
         c3.write(row.get("pg_id",""))
         c4.write(row.get("pg_name",""))
 
+        # DELETE OWNER
         if c5.button("❌", key=f"del_owner_{i}"):
-            owners_sheet.delete_rows(i + 2)
+            client = get_client()
+            sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
+            sheet.delete_rows(i + 2)
+
             st.cache_data.clear()
             st.rerun()
 
+        # EDIT OWNER
         if c6.button("✏️", key=f"edit_owner_{i}"):
             st.session_state[f"edit_owner_{i}"] = True
 
@@ -178,11 +157,14 @@ elif st.session_state.role == "admin":
             p = st.text_input("Password", value=row["password"], key=f"p{i}")
 
             if st.button("Save", key=f"s{i}"):
-                owners_sheet.update(f"A{i+2}:D{i+2}", [[u, p, row["pg_id"], row["pg_name"]]])
+                client = get_client()
+                sheet = client.open_by_key(PG_APP_ID).worksheet("Owners")
+                sheet.update(f"A{i+2}:D{i+2}", [[u, p, row["pg_id"], row["pg_name"]]])
+
                 st.cache_data.clear()
                 st.rerun()
 
-    # PG LIST
+    # -------- PG LIST --------
     st.subheader("🏠 All PGs")
 
     for i, row in pg_df.iterrows():
@@ -191,11 +173,16 @@ elif st.session_state.role == "admin":
         c1.write(row.get("pg_name",""))
         c2.write(row.get("pg_id",""))
 
+        # DELETE PG
         if c3.button("❌", key=f"del_pg_{i}"):
-            pg_sheet.delete_rows(i + 2)
+            client = get_client()
+            sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
+            sheet.delete_rows(i + 2)
+
             st.cache_data.clear()
             st.rerun()
 
+        # EDIT PG
         if c4.button("✏️", key=f"edit_pg_{i}"):
             st.session_state[f"edit_pg_{i}"] = True
 
@@ -203,13 +190,14 @@ elif st.session_state.role == "admin":
             name = st.text_input("PG Name", value=row["pg_name"], key=f"pg{i}")
 
             if st.button("Save PG", key=f"spg{i}"):
-                pg_sheet.update(f"B{i+2}", name)
+                client = get_client()
+                sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
+                sheet.update(f"B{i+2}", name)
+
                 st.cache_data.clear()
                 st.rerun()
 
-# -----------------------
-# OWNER DASHBOARD
-# -----------------------
+# ---------------- OWNER ----------------
 elif st.session_state.role == "owner":
 
     if st.button("Logout"):
@@ -234,9 +222,12 @@ elif st.session_state.role == "owner":
 
     owner_rooms = rooms_df[rooms_df["pg_id"] == pg_id]
 
-    # AUTO ROOM
-    if owner_rooms.empty and rooms_sheet:
-        rooms_sheet.append_row([pg_id, pg_name, "101", 0, 2, 2, 2])
+    # AUTO CREATE ROOM
+    if owner_rooms.empty:
+        client = get_client()
+        sheet = client.open_by_key(PG_APP_ID).worksheet("rooms")
+        sheet.append_row([pg_id, pg_name, "101", 0, 2, 2, 2])
+
         st.cache_data.clear()
         st.rerun()
 
@@ -252,8 +243,11 @@ elif st.session_state.role == "owner":
     t = st.number_input("Total Beds", 1, s)
     a = st.number_input("Available Beds", 0, t)
 
-    if st.button("Add Room") and rooms_sheet:
-        rooms_sheet.append_row([pg_id, pg_name, r, f, s, a, t])
+    if st.button("Add Room"):
+        client = get_client()
+        sheet = client.open_by_key(PG_APP_ID).worksheet("rooms")
+        sheet.append_row([pg_id, pg_name, r, f, s, a, t])
+
         st.cache_data.clear()
         st.rerun()
 
