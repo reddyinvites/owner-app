@@ -61,11 +61,11 @@ def get_sheets():
     client = get_client()
     app_file = client.open_by_key(PG_APP_ID)
 
-    owners_sheet = app_file.worksheet("Owners")
-    rooms_sheet = app_file.worksheet("rooms")
-    bookings_sheet = app_file.worksheet("Bookings")
-
-    return owners_sheet, rooms_sheet, bookings_sheet
+    return (
+        app_file.worksheet("Owners"),
+        app_file.worksheet("rooms"),
+        app_file.worksheet("Bookings")
+    )
 
 pg_df, owners_df, rooms_df, bookings_df = load_data()
 owners_sheet, rooms_sheet, bookings_sheet = get_sheets()
@@ -129,22 +129,9 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # -----------------------
-    # CREATE OWNER + SEARCH
-    # -----------------------
     st.subheader("➕ Create Owner")
 
-    search_pg = st.text_input("🔍 Search PG (Name / ID)")
-
-    if search_pg:
-        filtered_pg = pg_df[
-            pg_df["pg_name"].str.contains(search_pg, case=False, na=False) |
-            pg_df["pg_id"].astype(str).str.contains(search_pg, na=False)
-        ]
-    else:
-        filtered_pg = pg_df
-
-    pg_names = filtered_pg["pg_name"].dropna().unique().tolist()
+    pg_names = pg_df["pg_name"].dropna().unique().tolist()
     selected_pg = st.selectbox("Select PG", pg_names)
 
     new_user = st.text_input("Owner Username")
@@ -171,63 +158,8 @@ elif st.session_state.role == "admin":
         else:
             st.error("Enter all fields ❌")
 
-    # -----------------------
-    # OWNERS LIST (UPDATE + DELETE)
-    # -----------------------
     st.subheader("📋 Owners List")
-
-    if not owners_df.empty:
-
-        for i, row in owners_df.iterrows():
-
-            c1, c2, c3, c4, c5, c6 = st.columns([2,2,2,2,1,1])
-
-            username = str(row["username"]).strip()
-            password = str(row["password"]).strip()
-            pg_id = row["pg_id"]
-            pg_name = row["pg_name"]
-
-            c1.write(username)
-            new_password = c2.text_input("Password", value=password, key=f"pass_{i}")
-            c3.write(pg_id)
-            c4.write(pg_name)
-
-            # UPDATE
-            if c5.button("💾", key=f"update_{i}"):
-                try:
-                    all_values = owners_sheet.get_all_values()
-
-                    for idx, r in enumerate(all_values[1:], start=2):
-                        if r[0].strip() == username:
-                            owners_sheet.update_cell(idx, 2, new_password.strip())
-                            break
-
-                    st.success("Updated ✅")
-                    st.cache_data.clear()
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-            # DELETE
-            if c6.button("❌", key=f"delete_{i}"):
-                try:
-                    all_values = owners_sheet.get_all_values()
-
-                    for idx, r in enumerate(all_values[1:], start=2):
-                        if r[0].strip() == username:
-                            owners_sheet.delete_rows(idx)
-                            break
-
-                    st.success("Deleted ✅")
-                    st.cache_data.clear()
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Error: {e}")
-
-    else:
-        st.info("No owners available")
+    st.dataframe(owners_df, use_container_width=True)
 
 # -----------------------
 # OWNER DASHBOARD
@@ -248,44 +180,41 @@ elif st.session_state.role == "owner":
         st.error("Owner data missing ❌")
         st.stop()
 
-    owner_pg_id = owner_data.iloc[0]["pg_id"]
+    owner_pg_id = str(owner_data.iloc[0]["pg_id"]).strip()
     owner_pg_name = owner_data.iloc[0]["pg_name"]
 
     st.title(f"🏠 {owner_pg_name}")
 
-    # ROOMS
+    # ---------------- AUTO CREATE ROOM ----------------
+    if not rooms_df.empty:
+        rooms_df["pg_id"] = rooms_df["pg_id"].astype(str).str.strip()
+
+    owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
+
+    if owner_rooms.empty:
+        try:
+            rooms_sheet.append_row([
+                owner_pg_id,
+                owner_pg_name,
+                "101",
+                0,
+                2,
+                2,
+                2,
+                pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+            ])
+            st.success("✅ Default room auto-created")
+            st.cache_data.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Auto create failed: {e}")
+
+    # ---------------- ROOMS ----------------
     st.subheader("🛏 Rooms")
     owner_rooms = rooms_df[rooms_df["pg_id"] == owner_pg_id]
     st.dataframe(owner_rooms, use_container_width=True)
 
-    # DELETE ROOM
-    st.subheader("❌ Delete Room")
-
-    if not owner_rooms.empty:
-
-        room_options = owner_rooms["room_no"].astype(str).tolist()
-        selected_room = st.selectbox("Select Room to Delete", room_options)
-
-        if st.button("Delete Room"):
-            try:
-                all_values = rooms_sheet.get_all_values()
-
-                for i, row in enumerate(all_values[1:], start=2):
-                    if str(row[2]).strip() == selected_room and str(row[0]).strip() == str(owner_pg_id):
-                        rooms_sheet.delete_rows(i)
-                        break
-
-                st.success("Room Deleted ✅")
-                st.cache_data.clear()
-                st.rerun()
-
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-    else:
-        st.info("No rooms to delete")
-
-    # ADD ROOM
+    # ---------------- ADD ROOM ----------------
     st.subheader("➕ Add Room")
 
     room_no = st.text_input("Room Number")
@@ -296,32 +225,26 @@ elif st.session_state.role == "owner":
     available_beds = st.number_input("Available Beds", min_value=0, max_value=total_beds)
 
     if st.button("Add Room"):
+        try:
+            rooms_sheet.append_row([
+                owner_pg_id,
+                owner_pg_name,
+                room_no,
+                int(floor),
+                int(sharing),
+                int(available_beds),
+                int(total_beds),
+                pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
+            ])
 
-        if not room_no:
-            st.error("Enter room number ❌")
-        else:
-            try:
-                new_row = [
-                    owner_pg_id,
-                    owner_pg_name,
-                    room_no,
-                    int(floor),
-                    int(sharing),
-                    int(available_beds),
-                    int(total_beds),
-                    pd.Timestamp.now().strftime("%Y-%m-%d %H:%M")
-                ]
+            st.success("Room Added ✅")
+            st.cache_data.clear()
+            st.rerun()
 
-                rooms_sheet.append_row(new_row)
+        except Exception as e:
+            st.error(f"Error: {e}")
 
-                st.success("Room Added ✅")
-                st.cache_data.clear()
-                st.rerun()
-
-            except Exception as e:
-                st.error(f"Error: {e}")
-
-    # BOOKINGS
+    # ---------------- BOOKINGS ----------------
     st.subheader("📋 Bookings")
 
     if not bookings_df.empty and "pg_id" in bookings_df.columns:
