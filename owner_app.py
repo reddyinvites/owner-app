@@ -83,8 +83,8 @@ def update_pg_summary(pg_id, pg_name):
         available_beds = int(pg_rooms["available_beds"].sum())
 
     pg_sheet.append_row([
-        pg_id,
-        pg_name,
+        str(pg_id),
+        str(pg_name),
         total_beds,
         available_beds
     ])
@@ -198,19 +198,12 @@ elif st.session_state.role == "owner":
             st.cache_data.clear()
             st.rerun()
 
-    # -------- ADD ROOM --------
-    st.subheader("➕ Add Room")
+    # -------- ADD / UPDATE ROOM --------
+    st.subheader("➕ Add / Update Room")
 
     if pg_df.empty:
         st.error("❌ Sheet1 is empty")
         st.stop()
-
-    required_cols = ["pg_id", "pg_name", "room_no", "floor", "total_beds", "available_beds"]
-
-    for col in required_cols:
-        if col not in pg_df.columns:
-            st.error(f"❌ Missing column: {col}")
-            st.stop()
 
     pg_df = pg_df.dropna(subset=["pg_id", "pg_name"])
 
@@ -228,28 +221,22 @@ elif st.session_state.role == "owner":
 
     room_options = pg_rooms["room_no"].dropna().astype(str).unique().tolist()
 
-    # -------- AUTO-FILL + EDITABLE --------
     new_room = st.selectbox("Room Number", room_options)
 
     room_data = pg_rooms[pg_rooms["room_no"].astype(str) == str(new_room)].iloc[0]
 
-    new_floor = room_data["floor"]
+    new_floor = int(room_data["floor"])
     st.write(f"Floor: {new_floor}")
 
-    new_total = st.number_input(
-        "Total Beds",
-        min_value=1,
-        value=int(room_data["total_beds"])
-    )
-
+    new_total = st.number_input("Total Beds", 1, value=int(room_data["total_beds"]))
     new_available = st.number_input(
         "Available Beds",
-        min_value=0,
-        max_value=new_total,
+        0,
+        new_total,
         value=int(room_data["available_beds"])
     )
 
-    if st.button("Add Room"):
+    if st.button("Save Room"):
 
         if new_available > new_total:
             st.error("❌ Available beds cannot exceed total beds")
@@ -257,19 +244,49 @@ elif st.session_state.role == "owner":
 
         sheet = get_client().open_by_key(PG_APP_ID).worksheet("rooms")
 
-        sheet.append_row([
-            pg_id,
-            pg_name,
-            new_room,
-            new_floor,
-            "",
-            new_total,
-            new_available,
-            datetime.now().strftime("%Y-%m-%d %H:%M")
-        ])
+        all_rooms = sheet.get_all_records()
+        rooms_data = pd.DataFrame(all_rooms)
+
+        if not rooms_data.empty:
+            rooms_data.columns = rooms_data.columns.str.strip().str.lower().str.replace(" ", "_")
+
+        match_index = None
+
+        for i, r in rooms_data.iterrows():
+            if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == str(new_room):
+                match_index = i + 2
+                break
+
+        if match_index:
+            sheet.update(
+                f"A{match_index}:H{match_index}",
+                [[
+                    str(pg_id),
+                    str(pg_name),
+                    str(new_room),
+                    int(new_floor),
+                    "",
+                    int(new_total),
+                    int(new_available),
+                    datetime.now().strftime("%Y-%m-%d %H:%M")
+                ]]
+            )
+            st.success("Room Updated ✅")
+
+        else:
+            sheet.append_row([
+                str(pg_id),
+                str(pg_name),
+                str(new_room),
+                int(new_floor),
+                "",
+                int(new_total),
+                int(new_available),
+                datetime.now().strftime("%Y-%m-%d %H:%M")
+            ])
+            st.success("Room Added ✅")
 
         update_pg_summary(pg_id, pg_name)
 
-        st.success("Room Added ✅")
         st.cache_data.clear()
         st.rerun()
