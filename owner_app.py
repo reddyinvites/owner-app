@@ -28,21 +28,18 @@ def get_client():
     return gspread.authorize(creds)
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def load_data():
     client = get_client()
 
-    # ROOMS
     rooms_df = pd.DataFrame(
         client.open_by_key(PG_APP_ID).worksheet("rooms").get_all_records()
     )
 
-    # OWNERS
     owners_df = pd.DataFrame(
         client.open_by_key(PG_APP_ID).worksheet("Owners").get_all_records()
     )
 
-    # PG LIST (Sheet1 SAFE)
     try:
         pg_df = pd.DataFrame(
             client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
@@ -50,7 +47,6 @@ def load_data():
     except:
         pg_df = pd.DataFrame()
 
-    # CLEAN
     for df in [rooms_df, owners_df, pg_df]:
         if not df.empty:
             df.columns = df.columns.str.strip()
@@ -65,9 +61,46 @@ def load_data():
 
     return rooms_df, owners_df, pg_df
 
+# ---------------- UPDATE PG SUMMARY ----------------
+def update_pg_summary(pg_id, pg_name):
+    client = get_client()
+
+    rooms_sheet = client.open_by_key(PG_APP_ID).worksheet("rooms")
+    pg_sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
+
+    rooms = pd.DataFrame(rooms_sheet.get_all_records())
+
+    if rooms.empty:
+        total_beds = 0
+        available_beds = 0
+    else:
+        rooms.columns = rooms.columns.str.strip()
+        rooms["pg_id"] = rooms["pg_id"].astype(str)
+
+        pg_rooms = rooms[rooms["pg_id"] == str(pg_id)]
+
+        total_beds = int(pg_rooms["total_beds"].sum())
+        available_beds = int(pg_rooms["available_beds"].sum())
+
+    pg_data = pd.DataFrame(pg_sheet.get_all_records())
+
+    if not pg_data.empty:
+        pg_data.columns = pg_data.columns.str.strip()
+
+        for i, row in pg_data.iterrows():
+            if str(row["pg_id"]) == str(pg_id):
+
+                pg_sheet.update(
+                    f"A{i+2}:D{i+2}",
+                    [[pg_id, pg_name, total_beds, available_beds]]
+                )
+                return
+
+    pg_sheet.append_row([pg_id, pg_name, total_beds, available_beds])
+
+# ---------------- INIT ----------------
 rooms_df, owners_df, pg_df = load_data()
 
-# ---------------- SESSION ----------------
 if "login" not in st.session_state:
     st.session_state.login = False
 if "role" not in st.session_state:
@@ -117,11 +150,9 @@ elif st.session_state.role == "admin":
         st.session_state.clear()
         st.rerun()
 
-    # -------- PG LIST --------
     st.subheader("🏠 PG List")
     st.dataframe(pg_df, use_container_width=True)
 
-    # -------- CREATE OWNER --------
     st.subheader("➕ Create Owner")
 
     pg_names = pg_df["pg_name"].dropna().unique().tolist() if not pg_df.empty else []
@@ -142,7 +173,6 @@ elif st.session_state.role == "admin":
             st.cache_data.clear()
             st.rerun()
 
-    # -------- OWNERS LIST --------
     st.subheader("👤 Owners")
 
     for i, row in owners_df.iterrows():
@@ -179,7 +209,6 @@ elif st.session_state.role == "admin":
                 st.cache_data.clear()
                 st.rerun()
 
-    # -------- ROOMS CONTROL --------
     st.subheader("🛏 Manage Rooms")
 
     for i, row in rooms_df.iterrows():
@@ -193,6 +222,9 @@ elif st.session_state.role == "admin":
         if c4.button("❌", key=f"admin_del_{i}"):
             sheet = get_client().open_by_key(PG_APP_ID).worksheet("rooms")
             sheet.delete_rows(i + 2)
+
+            update_pg_summary(row["pg_id"], row["pg_name"])
+
             st.cache_data.clear()
             st.rerun()
 
@@ -225,10 +257,12 @@ elif st.session_state.role == "owner":
         if c4.button("❌", key=f"del_{i}"):
             sheet = get_client().open_by_key(PG_APP_ID).worksheet("rooms")
             sheet.delete_rows(i + 2)
+
+            update_pg_summary(pg_id, pg_name)
+
             st.cache_data.clear()
             st.rerun()
 
-    # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
     new_room = st.text_input("Room Number")
@@ -251,6 +285,8 @@ elif st.session_state.role == "owner":
             new_available,
             datetime.now().strftime("%Y-%m-%d %H:%M")
         ])
+
+        update_pg_summary(pg_id, pg_name)
 
         st.success("Room Added ✅")
         st.cache_data.clear()
