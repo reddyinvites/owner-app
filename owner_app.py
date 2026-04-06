@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ---------------- CONFIG ----------------
-PG_DATA_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
+PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 ADMIN_USER = "admin"
 ADMIN_PASS = "admin123"
@@ -31,12 +31,13 @@ def load_data():
     client = get_client()
     sheet = client.open_by_key(PG_DATA_ID)
 
-    # -------- ROOMS --------
+    # -------- Sheet1 --------
     df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
+
     if not df.empty:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
-    # -------- OWNERS --------
+    # -------- Owners (SAFE + CLEAN) --------
     owners_ws = sheet.worksheet("Owners")
     raw = owners_ws.get_all_values()
 
@@ -44,11 +45,13 @@ def load_data():
         owners = pd.DataFrame(columns=["username","password","pg_id","pg_name"])
     else:
         headers = [h.strip().lower().replace(" ", "_") for h in raw[0]]
-        owners = pd.DataFrame(raw[1:], columns=headers)
+        data = raw[1:]
 
-        # CLEAN DATA (VERY IMPORTANT)
+        owners = pd.DataFrame(data, columns=headers)
+
+        # CLEAN VALUES
         owners["username"] = owners["username"].astype(str).str.strip().str.lower()
-        owners["password"] = owners["password"].astype(str).str.replace("\n","").str.strip()
+        owners["password"] = owners["password"].astype(str).str.strip()
         owners["pg_id"] = owners["pg_id"].astype(str).str.strip()
         owners["pg_name"] = owners["pg_name"].astype(str).str.strip()
 
@@ -84,7 +87,11 @@ if not st.session_state.login:
                 st.error("❌ Invalid Admin")
 
         else:
-            # 🔥 FINAL LOGIN FIX
+            if owners_df.empty:
+                st.error("❌ Owners sheet empty")
+                st.stop()
+
+            # ✅ FINAL LOGIN FIX
             user = owners_df[
                 (owners_df["username"] == username.strip().lower()) &
                 (owners_df["password"] == password.strip())
@@ -99,7 +106,7 @@ if not st.session_state.login:
                 st.error("❌ Invalid Owner")
 
 # =====================================================
-# AFTER LOGIN
+# 🔐 AFTER LOGIN
 # =====================================================
 else:
 
@@ -108,7 +115,7 @@ else:
         st.rerun()
 
     if df.empty:
-        st.error("❌ Sheet1 empty")
+        st.error("❌ Sheet empty")
         st.stop()
 
     pg_unique = df.drop_duplicates(subset=["pg_id"])
@@ -145,10 +152,10 @@ else:
 
         st.subheader("🏠 PG Summary")
         summary = pg_rooms.groupby("pg_name")[["total_beds","available_beds"]].sum().reset_index()
-        st.dataframe(summary)
+        st.dataframe(summary, use_container_width=True)
 
         st.subheader("📋 All Rooms")
-        st.dataframe(pg_rooms)
+        st.dataframe(pg_rooms, use_container_width=True)
 
         st.subheader("➕ Create Owner")
 
@@ -176,6 +183,20 @@ else:
 
         st.title("🏠 Room Manager")
 
+        total_rooms = len(pg_rooms)
+        total_beds = int(pg_rooms["total_beds"].sum())
+        available = int(pg_rooms["available_beds"].sum())
+
+        occupied = total_beds - available
+        occupancy = int((occupied / total_beds) * 100) if total_beds else 0
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Rooms", total_rooms)
+        c2.metric("Beds", total_beds)
+        c3.metric("Occupancy", f"{occupancy}%")
+
+        st.progress(occupancy / 100)
+
         st.subheader("🛏 Rooms")
 
         for _, row in pg_rooms.iterrows():
@@ -186,3 +207,52 @@ else:
                 st.error(f"Room {row['room_no']} → FULL")
             else:
                 st.success(f"Room {row['room_no']} → {avail}/{total} Available")
+
+        st.subheader("➕ Update Room")
+
+        room_options = pg_rooms["room_no"].astype(str).tolist()
+        selected_room = st.selectbox("Room", room_options)
+
+        room_data = pg_rooms[pg_rooms["room_no"].astype(str) == selected_room].iloc[0]
+
+        st.write(f"Floor: {room_data['floor']}")
+        st.write(f"Sharing: {room_data['sharing_type']}")
+
+        is_full = int(room_data["available_beds"]) == 0
+
+        total_input = st.number_input("Total Beds", 1, int(room_data["sharing_type"].split()[0]),
+                                      value=int(room_data["total_beds"]), disabled=is_full)
+
+        avail_input = st.number_input("Available Beds", 0, total_input,
+                                      value=int(room_data["available_beds"]), disabled=is_full)
+
+        if st.button("Save Room", disabled=is_full):
+
+            sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Sheet1")
+
+            data = sheet.get_all_records()
+            df_sheet = pd.DataFrame(data)
+            df_sheet.columns = df_sheet.columns.str.strip().str.lower().str.replace(" ", "_")
+
+            for i, r in df_sheet.iterrows():
+                if str(r["pg_id"]) == str(pg_id) and str(r["room_no"]) == selected_room:
+
+                    headers = sheet.row_values(1)
+                    headers = [h.strip().lower().replace(" ", "_") for h in headers]
+
+                    total_col = headers.index("total_beds") + 1
+                    avail_col = headers.index("available_beds") + 1
+
+                    def col_letter(n):
+                        s = ""
+                        while n > 0:
+                            n, r = divmod(n - 1, 26)
+                            s = chr(65 + r) + s
+                        return s
+
+                    sheet.update(f"{col_letter(total_col)}{i+2}", [[int(total_input)]])
+                    sheet.update(f"{col_letter(avail_col)}{i+2}", [[int(avail_input)]])
+
+                    st.success("✅ Updated")
+                    st.cache_data.clear()
+                    st.rerun()
