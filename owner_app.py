@@ -28,20 +28,29 @@ def get_client():
 @st.cache_data(ttl=60)
 def load_data():
     client = get_client()
+    sheet = client.open_by_key(PG_DATA_ID)
 
-    df = pd.DataFrame(
-        client.open_by_key(PG_DATA_ID).worksheet("Sheet1").get_all_records()
-    )
+    # Sheet1
+    df = pd.DataFrame(sheet.worksheet("Sheet1").get_all_records())
 
-    owners = pd.DataFrame(
-        client.open_by_key(PG_DATA_ID).worksheet("Owners").get_all_records()
-    )
+    # Owners SAFE LOAD
+    try:
+        owners_ws = sheet.worksheet("Owners")
+    except:
+        owners_ws = sheet.add_worksheet(title="Owners", rows=1000, cols=4)
+        owners_ws.append_row(["username","password","pg_id","pg_name"])
 
+    owners = pd.DataFrame(owners_ws.get_all_records())
+
+    # CLEAN
     if not df.empty:
         df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
     if not owners.empty:
         owners.columns = owners.columns.str.strip().str.lower()
+        owners["username"] = owners["username"].astype(str).str.strip().str.lower()
+        owners["password"] = owners["password"].astype(str).str.strip()
+        owners["pg_id"] = owners["pg_id"].astype(str).str.strip()
 
     return df, owners
 
@@ -76,14 +85,14 @@ if not st.session_state.login:
 
         else:
             user = owners_df[
-                (owners_df["username"] == username) &
-                (owners_df["password"] == password)
+                (owners_df["username"] == username.strip().lower()) &
+                (owners_df["password"] == password.strip())
             ]
 
             if not user.empty:
                 st.session_state.login = True
                 st.session_state.role = "owner"
-                st.session_state.username = username
+                st.session_state.username = username.strip().lower()
                 st.rerun()
             else:
                 st.error("❌ Invalid Owner")
@@ -104,13 +113,25 @@ else:
     pg_unique = df.drop_duplicates(subset=["pg_id"])
     pg_names = pg_unique["pg_name"].tolist()
 
-    selected_pg = st.selectbox("Select PG", pg_names)
-    pg_row = pg_unique[pg_unique["pg_name"] == selected_pg].iloc[0]
-    pg_id = pg_row["pg_id"]
+    # OWNER → only their PG
+    if st.session_state.role == "owner":
+        owner_row = owners_df[
+            owners_df["username"] == st.session_state.username
+        ].iloc[0]
+
+        selected_pg = owner_row["pg_name"]
+        pg_id = owner_row["pg_id"]
+
+        st.write(f"🏠 PG: {selected_pg}")
+
+    else:
+        selected_pg = st.selectbox("Select PG", pg_names)
+        pg_row = pg_unique[pg_unique["pg_name"] == selected_pg].iloc[0]
+        pg_id = pg_row["pg_id"]
 
     pg_rooms = df[df["pg_id"] == pg_id]
 
-    # ---------------- MENU ----------------
+    # MENU
     if st.session_state.role == "admin":
         menu = st.sidebar.radio("📂 Menu", ["Admin Dashboard", "Room Manager"])
     else:
@@ -123,16 +144,16 @@ else:
 
         st.title("🛠 Admin Dashboard")
 
-        # -------- SUMMARY --------
+        # SUMMARY
         st.subheader("🏠 PG Summary")
         summary = pg_rooms.groupby("pg_name")[["total_beds","available_beds"]].sum().reset_index()
         st.dataframe(summary, use_container_width=True)
 
-        # -------- ROOMS --------
+        # ALL ROOMS
         st.subheader("📋 All Rooms")
         st.dataframe(pg_rooms, use_container_width=True)
 
-        # -------- CREATE OWNER --------
+        # CREATE OWNER
         st.subheader("➕ Create Owner")
 
         selected_pg_owner = st.selectbox("Select PG", pg_names, key="owner_pg")
@@ -141,13 +162,19 @@ else:
 
         if st.button("Create Owner"):
 
-            sheet = get_client().open_by_key(PG_DATA_ID).worksheet("Owners")
+            sheet_file = get_client().open_by_key(PG_DATA_ID)
+
+            try:
+                sheet = sheet_file.worksheet("Owners")
+            except:
+                sheet = sheet_file.add_worksheet(title="Owners", rows=1000, cols=4)
+                sheet.append_row(["username","password","pg_id","pg_name"])
 
             pg_row = pg_unique[pg_unique["pg_name"] == selected_pg_owner].iloc[0]
 
             sheet.append_row([
-                new_user,
-                new_pass,
+                new_user.strip().lower(),
+                new_pass.strip(),
                 str(pg_row["pg_id"]),
                 selected_pg_owner
             ])
@@ -161,7 +188,7 @@ else:
 
         st.title("🏠 Room Manager")
 
-        # -------- DASHBOARD --------
+        # DASHBOARD
         st.subheader("📊 Dashboard")
 
         total_rooms = len(pg_rooms)
@@ -178,7 +205,7 @@ else:
 
         st.progress(occupancy / 100)
 
-        # -------- ROOM LIST --------
+        # ROOMS
         st.subheader("🛏 Rooms")
 
         for _, row in pg_rooms.iterrows():
@@ -186,7 +213,6 @@ else:
             total = int(row["total_beds"])
             avail = int(row["available_beds"])
 
-            # ✅ CORRECT LOGIC
             if avail == 0:
                 status = "🔴 FULL"
                 color = "red"
@@ -202,7 +228,7 @@ else:
                 unsafe_allow_html=True
             )
 
-        # -------- UPDATE ROOM --------
+        # UPDATE ROOM
         st.subheader("➕ Update Room")
 
         room_options = pg_rooms["room_no"].astype(str).tolist()
@@ -216,7 +242,6 @@ else:
         sharing = int(str(room_data["sharing_type"]).split()[0])
         st.write(f"Sharing: {sharing} Sharing")
 
-        # ✅ FIXED FULL CONDITION
         is_full = int(room_data["available_beds"]) == 0
 
         total_input = st.number_input(
