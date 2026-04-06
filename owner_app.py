@@ -49,7 +49,7 @@ def load_data():
 
     for df in [rooms_df, owners_df, pg_df]:
         if not df.empty:
-            df.columns = df.columns.str.strip()
+            df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
 
     if not owners_df.empty:
         owners_df["username"] = owners_df["username"].str.lower().str.strip()
@@ -74,7 +74,7 @@ def update_pg_summary(pg_id, pg_name):
         total_beds = 0
         available_beds = 0
     else:
-        rooms.columns = rooms.columns.str.strip()
+        rooms.columns = rooms.columns.str.strip().str.lower().str.replace(" ", "_")
         rooms["pg_id"] = rooms["pg_id"].astype(str)
 
         pg_rooms = rooms[rooms["pg_id"] == str(pg_id)]
@@ -82,21 +82,13 @@ def update_pg_summary(pg_id, pg_name):
         total_beds = int(pg_rooms["total_beds"].sum())
         available_beds = int(pg_rooms["available_beds"].sum())
 
-    pg_data = pd.DataFrame(pg_sheet.get_all_records())
-
-    if not pg_data.empty:
-        pg_data.columns = pg_data.columns.str.strip()
-
-        for i, row in pg_data.iterrows():
-            if str(row["pg_id"]) == str(pg_id):
-
-                pg_sheet.update(
-                    f"A{i+2}:D{i+2}",
-                    [[pg_id, pg_name, total_beds, available_beds]]
-                )
-                return
-
-    pg_sheet.append_row([pg_id, pg_name, total_beds, available_beds])
+    # Since Sheet1 is room-wise → just append/update summary row
+    pg_sheet.append_row([
+        pg_id,
+        pg_name,
+        total_beds,
+        available_beds
+    ])
 
 # ---------------- INIT ----------------
 rooms_df, owners_df, pg_df = load_data()
@@ -153,62 +145,6 @@ elif st.session_state.role == "admin":
     st.subheader("🏠 PG List")
     st.dataframe(pg_df, use_container_width=True)
 
-    st.subheader("➕ Create Owner")
-
-    pg_names = pg_df["pg_name"].dropna().unique().tolist() if not pg_df.empty else []
-    selected_pg = st.selectbox("Select PG", pg_names)
-
-    new_user = st.text_input("Username")
-    new_pass = st.text_input("Password")
-
-    if st.button("Create Owner"):
-
-        if selected_pg:
-            pg_id = pg_df[pg_df["pg_name"] == selected_pg]["pg_id"].values[0]
-
-            sheet = get_client().open_by_key(PG_APP_ID).worksheet("Owners")
-            sheet.append_row([new_user, new_pass, pg_id, selected_pg])
-
-            st.success("Owner Created ✅")
-            st.cache_data.clear()
-            st.rerun()
-
-    st.subheader("👤 Owners")
-
-    for i, row in owners_df.iterrows():
-
-        c1, c2, c3, c4 = st.columns([2,2,1,1])
-
-        c1.write(row["username"])
-        c2.write(row["pg_name"])
-
-        if c3.button("❌", key=f"del_owner_{i}"):
-            sheet = get_client().open_by_key(PG_APP_ID).worksheet("Owners")
-            sheet.delete_rows(i + 2)
-            st.cache_data.clear()
-            st.rerun()
-
-        if c4.button("✏️", key=f"edit_owner_{i}"):
-            st.session_state[f"edit_owner_{i}"] = True
-
-        if st.session_state.get(f"edit_owner_{i}", False):
-
-            u = st.text_input("Username", value=row["username"], key=f"u{i}")
-            p = st.text_input("Password", value=row["password"], key=f"p{i}")
-
-            if st.button("Save", key=f"save_owner_{i}"):
-                sheet = get_client().open_by_key(PG_APP_ID).worksheet("Owners")
-
-                sheet.update(f"A{i+2}:D{i+2}", [[
-                    u,
-                    p,
-                    row["pg_id"],
-                    row["pg_name"]
-                ]])
-
-                st.cache_data.clear()
-                st.rerun()
-
     st.subheader("🛏 Manage Rooms")
 
     for i, row in rooms_df.iterrows():
@@ -263,15 +199,28 @@ elif st.session_state.role == "owner":
             st.cache_data.clear()
             st.rerun()
 
-    # -------- ADD ROOM (UPDATED) --------
+    # -------- ADD ROOM --------
     st.subheader("➕ Add Room")
 
-    pg_options = pg_df[["pg_id", "pg_name"]].drop_duplicates()
-    pg_display = pg_options["pg_name"].tolist()
+    # CLEAN + UNIQUE PG LIST
+    if not pg_df.empty:
+        pg_df.columns = pg_df.columns.str.strip().str.lower().str.replace(" ", "_")
+
+        pg_df = pg_df.dropna(subset=["pg_id", "pg_name"])
+
+        pg_unique = pg_df.drop_duplicates(subset=["pg_id"])
+
+        pg_display = pg_unique["pg_name"].tolist()
+    else:
+        pg_display = []
+
+    if len(pg_display) == 0:
+        st.error("❌ No PG found in Sheet1")
+        st.stop()
 
     selected_pg_name = st.selectbox("Select PG", pg_display)
 
-    selected_pg_row = pg_options[pg_options["pg_name"] == selected_pg_name].iloc[0]
+    selected_pg_row = pg_unique[pg_unique["pg_name"] == selected_pg_name].iloc[0]
 
     pg_id = selected_pg_row["pg_id"]
     pg_name = selected_pg_row["pg_name"]
